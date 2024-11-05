@@ -21,10 +21,10 @@ fi
 # echo "当前最新版本号：'$version'"
 
 echo "将源码推送到Gitee"
-git remote add gitee git@gitee.com:kimshift/py-script.git
+# git remote add gitee git@gitee.com:kimshift/py-script.git
 git push gitee master
 
 echo "将源码推送到Github"
-git remote add github git@github.com:kimshift/pyScript.git
+# git remote add github git@github.com:kimshift/pyScript.git
 git push github master
 # git push github refs/tags/v$version # 提交 tag 到远程仓库

@@ -179,13 +179,13 @@ class Buttons:
                 coord = location(self.path,position)[:2]
                 self.coord[self.btn] = coord
         coord = location(self.path,position)[:2]
-        print(f'点击{self.btn}按钮:',coord)
+        print(f'点击->{self.btn}按钮:',coord)
         click(coord, num)
     
     def 监听点击(self, num, position):
         config = {'position':position, 'num':num }
         wait_click(self.path, config)
-        print(f'监听{self.btn}点击按钮完成')
+        print(f'监听->{self.btn}点击按钮完成')
 
     def default(self, btn, num, listen):
         if btn in dict:

@@ -1,0 +1,21 @@
+{
+  "name": "pyScript",
+  "version": "1.0.0",
+  "description": "python 脚本项目",
+  "main": "main.py",
+  "scripts": {
+    "start": "python src/main.py",
+    "dev": "npm run create_ld",
+    "create_ld": "python src/emulator/create.py",
+    "serve_ld": "python src/emulator.py start"
+  },
+  "keywords": [],
+  "author": "琴时",
+  "license": "ISC",
+  "packages": {
+    "subprocess": "pip install subprocess",
+    "pyautogui": "pip install pyautogui",
+    "cv2": "pip install opencv-python",
+    "pyperclip": "pip install pyperclip"
+  }
+}

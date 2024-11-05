@@ -1,0 +1,10 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# production
+__pycache__
+
+# visual studio code
+tempCodeRunnerFile.*
+
+# screenshot
+screenshot.png

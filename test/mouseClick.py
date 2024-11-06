@@ -38,6 +38,7 @@ def main():
     # pyautogui.sleep(3) # 等待3秒
     # pyautogui.keyDown('ctrl') # 按下ctrl键
     # pyautogui.keyUp('ctrl') # 释放ctrl键
+    # pyautogui.press('enter') # 点击enter键
     # pyautogui.typewrite('Hello, world!') # 输入文本
     # pyautogui.hotkey('ctrl', 'c') # 模拟ctrl+c快捷键
     # pyautogui.screenshot('screenshot.png') # 截屏并保存为screenshot.png

@@ -5,7 +5,9 @@ data = {
     '下拉': 'select',
     '图标': 'logo',
     '全选': 'check_all',
-    '备份': 'backup_icon',
+    '备份/还原': 'mirror',
+    '备份': 'backup',
+    '还原': 'restore',
     '批量启动': 'batch_start',
     '批量新增': 'batch_create',
     '批量删除': 'batch_delete',
@@ -20,6 +22,15 @@ data = {
     '启动': 'start',
     '不在提示': 'none_tip',
     '不谢谢': 'no_thanks',
+    '文件保存': 'file_save',
+    '文件取消': 'file_cancel',
+    '文件搜索': 'file_search',
+}
+
+common = {
+    '文件保存': 'file_save',
+    '文件取消': 'file_cancel',
+    '文件搜索': 'file_search', 
 }
 
 ld_left_btn = ['全选']

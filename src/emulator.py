@@ -3,19 +3,11 @@ import common as device
 from common import Buttons
 import time
 
-# 搜索
-def search(value=''):
-
-
-    # 输入内容
-    write(value)
-    print('搜索内容:',value)
-
 class Main:
     def __init__(self, app_path, process_name):
         self.app_path = app_path
         self.process_name = process_name
-        self.buttons = Buttons("image/emulator/") # 初始化点击按钮类
+        self.buttons = Buttons("emulator") # 初始化点击按钮类
 
     # 运行雷电模拟器
     def start(self):
@@ -30,12 +22,17 @@ class Main:
         self.buttons.click("批量启动")
 
     # 搜索
-    def search(self, value):
+    def search(self, id):
         self.buttons.click("下拉") # 去除焦点
-        self.buttons.click("搜索") # 点击搜索框
-        device.sleep(0.1)
+        status = self.buttons.click("搜索") # 点击搜索框
+        if status!=True:
+            print("点击搜索框失败")
+            return False
         device.clear() # 清楚内容
+        value = f"雷电模拟器-{id}"
         device.write(value) # 输入内容
+        return True
+       
     
     # 批量启动新模拟器
     def batch_start(self, start_id, end_id):
@@ -82,6 +79,34 @@ class Main:
         end = 1
         self.batch_start(start, end)  
 
+    def backup(self):
+        data = device.read_json("cache.json")
+        start= data["backup_start_id"]
+        end = data["backup_end_id"]
+        start, end = 3,3
+        while start <= end:
+            device.open_app(self.app_path)
+            status = self.search(start)
+            if status!=True:
+                print(f"第{start}个模拟器操作异常")
+                break
+            device.sleep(1)
+            self.buttons.click("备份/还原")
+            self.buttons.click("备份")
+            device.sleep(1)
+            self.buttons.click("文件搜索")
+            path = 'D:\\Program Files\\LDPlayer9\\test'
+            device.paste(path)
+            device.sleep(0.1)
+            device.click_key("enter")
+            device.sleep(0.1)
+            break
+            self.buttons.click("文件保存")
+            start += 1
+            device.sleep(1)
+        print("备份完成:", end - data["backup_start_id"] + 1)
+        
+    
     def default(self):
         print("default")
 
@@ -101,10 +126,9 @@ if __name__ == '__main__':
         print("argv:", sys.argv[1:])
         method = sys.argv[1]
     else:
-        method = 'create' # dev模式使用
+        method = 'backup' # dev模式使用
     emulator = Main(app_path, process_name) # 实例化模拟器类
     emulator.switch(method)
-    
     
 
 

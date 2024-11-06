@@ -8,7 +8,8 @@ import numpy as np
 import time
 import keyboard
 import json
-from dict import data as dict, ld_left_btn, ld_right_btn
+import re
+from dict import data as dict, common, ld_left_btn, ld_right_btn
 
 pyautogui.FAILSAFE = True # 安全退出
 
@@ -53,13 +54,14 @@ def restart_app(app_path,process_name):
         open_app(app_path)
 
 def location(img_path,position="center",width=8,height=8):
-    # 读取要查找的图片
-    template = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-    w, h = template.shape[::-1]
     
     # 截取当前屏幕截图
     screenshot = pyautogui.screenshot('image/screenshot.png')
     screenshot = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2GRAY)
+
+    # 读取要查找的图片
+    template = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+    w, h = template.shape[::-1]
 
     # 使用模板匹配在屏幕上查找图片
     result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
@@ -79,23 +81,60 @@ def location(img_path,position="center",width=8,height=8):
         coord = coords[position]
     return coord
 
+def v_location(img_path):
+    # 截取屏幕截图
+    screenshot = pyautogui.screenshot('image/screenshot.png')
+    screenshot = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
+
+    # 加载模板图像
+    template = cv2.imread(img_path, cv2.IMREAD_COLOR)
+    template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+    w, h = template_gray.shape[::-1]
+
+    # 将屏幕截图转换为灰度图
+    screenshot_gray = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
+
+    # 模板匹配
+    res = cv2.matchTemplate(screenshot_gray, template_gray, cv2.TM_CCOEFF_NORMED)
+    threshold = 0.8
+    loc = np.where(res >= threshold)
+
+    # 获取所有匹配的位置
+    matches = []
+    for pt in zip(*loc[::-1]):
+        matches.append((pt[0], pt[1]))
+
+    # 如果没有找到匹配项，退出程序
+    if not matches:
+        return (None, None)
+    
+    # 筛选垂直方向上最上面的那个按钮
+    topmost_match = min(matches, key=lambda x: x[1])
+
+    # 计算按钮的中心点
+    center_x = topmost_match[0] + w // 2
+    center_y = topmost_match[1] + h // 2
+    return (center_x, center_y)
+
 # 点击坐标
 def click(coord, number=1, interval=0.5):
     if coord[0] is None:
         print("未找到坐标，无法点击")
-        return 
+        return False
     for i in range(number):
         pyautogui.click(coord[0], coord[1])
         if(i < number - 1):
-            pyautogui.sleep(interval)    
+            pyautogui.sleep(interval)
+    return True
 
 # 双击坐标
 def doubleClick(coord, interval=0.5):
     if coord[0] is None:
         print("未找到坐标，无法点击")
-        return 
+        return False
     pyautogui.moveTo(coord[0], coord[1])   
     pyautogui.doubleClick(interval)
+    return True
 
 # 监听点击
 def wait_click(path,config={}):
@@ -121,6 +160,11 @@ def wait_click(path,config={}):
     except :
         print('终止监听.')
     
+# 点击键盘
+def click_key(key):
+    # pyautogui.keyDown(key)
+    # pyautogui.keyUp(key)
+    pyautogui.press(key)
 
 # 等待
 def sleep(second):
@@ -134,7 +178,10 @@ def clear():
 
 # 输入文本
 def write(value):
-    pyautogui.typewrite(str(value))
+    if contains_chinese(value):
+        paste(value)
+    else:
+        pyautogui.typewrite(str(value))
 
 # 粘贴文本
 def paste(value):
@@ -151,9 +198,17 @@ def write_json(path, data):
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
+def contains_chinese(text):
+    # 定义一个匹配中文字符和中文标点符号的正则表达式模式
+    pattern = re.compile(r'[\u4e00-\u9fff]|[\u3000-\u303f\uff00-\uffef]')
+    # 搜索文本中是否有匹配的模式
+    match = pattern.search(text)
+    return match is not None
+
 class Buttons:
-    def __init__(self,prefix):
-        self.prefix = prefix # 按钮图片路径前缀
+    def __init__(self, prefix='common'):
+        self.prefix = f'image/{prefix}/' # 按钮图片路径前缀
+        self.common = 'image/common/' # 按钮图片路径前缀
         self.path = '' # 按钮图片路径
         self.btn = ''  # 按钮名称
         self.coord = {
@@ -180,7 +235,7 @@ class Buttons:
                 self.coord[self.btn] = coord
         coord = location(self.path,position)[:2]
         print(f'点击->{self.btn}按钮:',coord)
-        click(coord, num)
+        return click(coord, num)
     
     def 监听点击(self, num, position):
         config = {'position':position, 'num':num }
@@ -190,16 +245,18 @@ class Buttons:
     def default(self, btn, num, listen):
         if btn in dict:
             self.btn = btn
-            self.path = self.prefix + dict[btn] + ".png"
+            prefix = self.prefix
+            if btn in common:
+                prefix = self.common
+            self.path = prefix + dict[btn] + ".png"
             position_map = {param: 'left' for param in ld_left_btn}
             position_map.update({param: 'right' for param in ld_right_btn})
             position = position_map.get(btn, 'center')
             if listen:
-                self.监听点击(num, position)
-            else:
-                self.通用(num, position)
-        else:
-            print(f'************Error:{btn}按钮获取失败************')
+               return self.监听点击(num, position)
+            return self.通用(num, position)
+        print(f'************Error:{btn}按钮获取失败************')
+        return False
 
     def click(self, btn, num=1, listen=False):
         """
@@ -208,7 +265,7 @@ class Buttons:
           listen:是否持续监听;为True时,num为监听点击次数
         """
         button = getattr(self, btn, self.default)
-        button(btn, num, listen) 
+        return button(btn, num, listen) 
             
 
 

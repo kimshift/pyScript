@@ -1,5 +1,5 @@
 # 字典文件
-data = {
+emulator = {
     '排列窗口': 'win',
     '搜索': 'search',
     '下拉': 'select',
@@ -22,16 +22,17 @@ data = {
     '启动': 'start',
     '不在提示': 'none_tip',
     '不谢谢': 'no_thanks',
-    '文件保存': 'file_save',
-    '文件取消': 'file_cancel',
-    '文件搜索': 'file_search',
 }
 
 common = {
     '文件保存': 'file_save',
     '文件取消': 'file_cancel',
+    '路径搜索': 'path_search', 
     '文件搜索': 'file_search', 
+    '文件打开': 'file_open', 
 }
+
+data = { **emulator, **common}
 
 ld_left_btn = ['全选']
 ld_right_btn = []

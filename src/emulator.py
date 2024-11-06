@@ -1,7 +1,6 @@
 import sys
 import common as device
 from common import Buttons
-import time
 
 class Main:
     def __init__(self, app_path, process_name):
@@ -37,7 +36,7 @@ class Main:
     # 批量启动新模拟器
     def batch_start(self, start_id, end_id):
         try :
-            while True:
+            while start_id <= end_id:
                 device.open_app(self.app_path)
                 self.search(start_id)
                 print(f"正在启动第{start_id}个雷电模拟器...")
@@ -47,43 +46,42 @@ class Main:
                 device.sleep(1)
                 self.buttons.click("不谢谢")
                 start_id += 1
-                if start_id  > end_id:
-                    print("所有模拟器已打开")
-                    break
             print("所有模拟器启动成功")   
         except :
             print('异常：终止执行')
 
+    # 配置雷电模拟器
+    def batch_setting(self):
+        self.buttons.click("全选",2)
+        self.buttons.click("批量操作")
+        self.buttons.click("批量设置")
+        self.buttons.click("分辨率")
+        self.buttons.click("内存")
+        self.buttons.click("其他设置")
+        self.buttons.click("退出选项")
+        self.buttons.click("保存设置")
+        self.buttons.click("确定")
+    
     # 自动创建雷电模拟器
     def create(self):
         device.open_app(self.app_path)
         # 创建雷电模拟器
-        # self.buttons.click("批量操作")
-        # self.buttons.click("批量新增")
+        self.buttons.click("批量操作")
+        self.buttons.click("批量新增")
         # 配置雷电模拟器
-        # self.buttons.click("全选",2)
-        # self.buttons.click("批量操作")
-        # self.buttons.click("批量设置")
-        # self.buttons.click("分辨率")
-        # self.buttons.click("内存")
-        # self.buttons.click("其他设置")
-        # self.buttons.click("退出选项")
-        # self.buttons.click("保存设置")
-        # self.buttons.click("确定")
+        self.batch_setting()
         # 启动雷电模拟器
         data = device.read_json("cache.json")
-        
         number = data["emulator_num"]
         start = number + 1
         end = start + data["batch_start_num"]
-        end = 1
         self.batch_start(start, end)  
 
+    # 备份雷电模拟器
     def backup(self):
         data = device.read_json("cache.json")
-        start= data["backup_start_id"]
+        start = data["backup_start_id"]
         end = data["backup_end_id"]
-        start, end = 3,3
         while start <= end:
             device.open_app(self.app_path)
             status = self.search(start)
@@ -94,19 +92,47 @@ class Main:
             self.buttons.click("备份/还原")
             self.buttons.click("备份")
             device.sleep(1)
-            self.buttons.click("文件搜索")
-            path = 'D:\\Program Files\\LDPlayer9\\test'
+            self.buttons.click("路径搜索")
+            path = 'D:\\Program Files\\LDPlayer9\\backup'
             device.paste(path)
             device.sleep(0.1)
             device.click_key("enter")
             device.sleep(0.1)
-            break
             self.buttons.click("文件保存")
             start += 1
             device.sleep(1)
         print("备份完成:", end - data["backup_start_id"] + 1)
-        
-    
+
+    # 恢复雷电模拟器    
+    def restore(self):
+        data = device.read_json("cache.json")
+        start = data["backup_start_id"]
+        end = data["backup_end_id"]
+        # start, end = 29,29 # dev:数值相同还原单个
+        while start <= end:
+            device.open_app(self.app_path)
+            status = self.search(start)
+            if status!=True:
+                print(f"第{start}个模拟器操作异常")
+                break
+            device.sleep(1)
+            self.buttons.click("备份/还原")
+            self.buttons.click("还原")
+            device.sleep(1)
+            self.buttons.click("路径搜索")
+            path = 'D:\\Program Files\\LDPlayer9\\backup'
+            device.paste(path)
+            device.sleep(0.1)
+            device.click_key("enter")
+            self.buttons.click("文件搜索")
+            device.sleep(0.1)
+            app_name = f'雷电模拟器-{start}.ldbk'
+            device.paste(app_name)
+            device.sleep(0.1)
+            self.buttons.click("文件打开")
+            start += 1
+        print("还原完成:", end - data["backup_start_id"] + 1)
+
     def default(self):
         print("default")
 
@@ -126,7 +152,7 @@ if __name__ == '__main__':
         print("argv:", sys.argv[1:])
         method = sys.argv[1]
     else:
-        method = 'backup' # dev模式使用
+        method = 'restore' # dev模式使用
     emulator = Main(app_path, process_name) # 实例化模拟器类
     emulator.switch(method)
     

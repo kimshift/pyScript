@@ -54,32 +54,36 @@ def restart_app(app_path,process_name):
         open_app(app_path)
 
 def location(img_path,position="center",width=8,height=8):
+    try:
+        # 截取当前屏幕截图
+        screenshot = pyautogui.screenshot('image/screenshot.png')
+        screenshot = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2GRAY)
+
+        # 读取要查找的图片
+        template = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+        w, h = template.shape[::-1]
+
+        # 使用模板匹配在屏幕上查找图片
+        result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result) # max_loc:矩形左上角
+        # 设置匹配阈值
+        threshold = 0.8
+        coord = (None, None)
+        if max_val >= threshold:
+            # 获取图片中心点的坐标
+            center_x, center_y = max_loc[0] + w // 2, max_loc[1] + h // 2
+            left_x, right_x = max_loc[0] + width // 2, max_loc[0] + w - width // 2
+            coords = {
+                 "left": (left_x, center_y),
+                 "right": (right_x, center_y),
+                 "center": (center_x, center_y),
+            }
+            coord = coords[position]
+        return coord
+    except Exception as e:
+        print(f"获取位置异常: {e}")
+        return (None, None)
     
-    # 截取当前屏幕截图
-    screenshot = pyautogui.screenshot('image/screenshot.png')
-    screenshot = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2GRAY)
-
-    # 读取要查找的图片
-    template = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-    w, h = template.shape[::-1]
-
-    # 使用模板匹配在屏幕上查找图片
-    result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
-    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result) # max_loc:矩形左上角
-    # 设置匹配阈值
-    threshold = 0.8
-    coord = (None, None)
-    if max_val >= threshold:
-        # 获取图片中心点的坐标
-        center_x, center_y = max_loc[0] + w // 2, max_loc[1] + h // 2
-        left_x, right_x = max_loc[0] + width // 2, max_loc[0] + w - width // 2
-        coords = {
-             "left": (left_x, center_y),
-             "right": (right_x, center_y),
-             "center": (center_x, center_y),
-        }
-        coord = coords[position]
-    return coord
 
 def v_location(img_path):
     # 截取屏幕截图
@@ -206,9 +210,9 @@ def contains_chinese(text):
     return match is not None
 
 class Buttons:
-    def __init__(self, prefix='common'):
-        self.prefix = f'image/{prefix}/' # 按钮图片路径前缀
-        self.common = 'image/common/' # 按钮图片路径前缀
+    def __init__(self, children='common', root='image', common='common'):  
+        self.common = root + '/' + common + '/' # 按钮图片公共目录
+        self.prefix = root + '/' + children + '/' # 按钮图片目录前缀
         self.path = '' # 按钮图片路径
         self.btn = ''  # 按钮名称
         self.coord = {
@@ -245,18 +249,38 @@ class Buttons:
     def default(self, btn, num, listen):
         if btn in dict:
             self.btn = btn
-            prefix = self.prefix
-            if btn in common:
-                prefix = self.common
+            prefix = self.common if btn in common else self.prefix
             self.path = prefix + dict[btn] + ".png"
-            position_map = {param: 'left' for param in ld_left_btn}
-            position_map.update({param: 'right' for param in ld_right_btn})
+            position_map = {param: 'left' for param in ld_left_btn} # 将左侧按钮的键值对添加到字典中
+            position_map.update({param: 'right' for param in ld_right_btn}) # 将右侧按钮的键值对添加到字典中
+            # 使用get方法获取键对应的值，如果键不存在则返回默认值'center'
             position = position_map.get(btn, 'center')
             if listen:
                return self.监听点击(num, position)
             return self.通用(num, position)
         print(f'************Error:{btn}按钮获取失败************')
         return False
+
+    def find(self, btn, listen=False):
+        if btn not in dict:
+            return (None, None)
+        try :
+            while True:
+                
+                if keyboard.is_pressed('f8'):  # 长按F8停止
+                    print("F8终止查找.")
+                    break  # 跳出循环
+                coord = location(path, position, width)
+                if coord[0] is not None:
+                    count += 1
+                    click(coord)
+                    print("点击目标:", coord)
+                if count == number:
+                    print(f"监听点击完毕{count}次")
+                    break
+                sleep(interval)
+        except :
+            print('终止查找.')
 
     def click(self, btn, num=1, listen=False):
         """

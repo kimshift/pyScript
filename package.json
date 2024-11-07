@@ -6,7 +6,7 @@
   "scripts": {
     "start": "python src/main.py",
     "dev": "npm run create_ld",
-    "push": "sh shell/release.sh",
+    "push": "sh script/release.sh",
     "create_ld": "python src/emulator.py",
     "serve_ld": "python src/emulator.py start"
   },

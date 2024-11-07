@@ -1,4 +1,6 @@
 # 字典文件
+
+# 雷电模拟器
 emulator = {
     '排列窗口': 'win',
     '搜索': 'search',
@@ -22,6 +24,11 @@ emulator = {
     '启动': 'start',
     '不在提示': 'none_tip',
     '不谢谢': 'no_thanks',
+    '雷电选项': 'ld_op',
+    '同步选项': 'async_op',
+    '开启同步': 'open_async',
+    '关闭同步': 'close_async',
+    '关闭同步窗口': 'close_async_win',
 }
 
 common = {
@@ -30,9 +37,18 @@ common = {
     '路径搜索': 'path_search', 
     '文件搜索': 'file_search', 
     '文件打开': 'file_open', 
+    '关闭支付宝文件夹': 'close_ant_file', 
+    '最小化vscode': 'mini_vscode', 
 }
 
-data = { **emulator, **common}
+left_btn = ['全选']
+right_btn = ['关闭同步窗口']
 
-ld_left_btn = ['全选']
-ld_right_btn = []
+dict = {
+    'emulator': emulator,
+    'common': common,
+    'left_btn': left_btn,
+    'right_btn': right_btn,
+    'global': { **emulator, **common}
+}
+

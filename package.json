@@ -7,7 +7,7 @@
     "start": "python src/main.py",
     "dev": "npm run create_ld",
     "push": "sh shell/release.sh",
-    "create_ld": "python src/emulator/create.py",
+    "create_ld": "python src/emulator.py",
     "serve_ld": "python src/emulator.py start"
   },
   "keywords": [],

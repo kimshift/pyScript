@@ -29,6 +29,10 @@ emulator = {
     '开启同步': 'open_async',
     '关闭同步': 'close_async',
     '关闭同步窗口': 'close_async_win',
+    '最小化雷电多开': 'mini_ld_dk',
+    '关闭雷电多开': 'close_ld_dk',
+    'APK选项': 'apk_op',
+    '选择APK': 'select_apk',
 }
 
 common = {
@@ -41,8 +45,12 @@ common = {
     '最小化vscode': 'mini_vscode', 
 }
 
+
 left_btn = ['全选']
-right_btn = ['关闭同步窗口']
+right_btn = [
+        '最小化vscode','关闭vscode','关闭同步窗口','最小化雷电多开',
+        '关闭雷电多开'
+    ]
 
 dict = {
     'emulator': emulator,

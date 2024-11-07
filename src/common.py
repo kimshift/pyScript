@@ -133,12 +133,23 @@ def horizontal(btn,left_btn=None, right_btn=None,center_btn=None):
     position = position_map.get(btn, 'center')
     return position
 
+# 提示框
+def alert(value):
+    pyautogui.alert(str(value))
+
+# 确认提示框
+def confirm(title="标题", text="内容",buttons=['取消','确认']):
+    result = pyautogui.confirm(title=title,text=text,buttons=buttons)
+    return result == buttons[1]
+
 # 点击坐标
 def click(coord, number=1, interval=0.5):
     if isinstance(coord, str):
         coord = coord.split(',')
     if coord[0] is None:
-        print("未找到坐标，无法点击")
+        print("未找到坐标=>无法点击")
+        res = confirm('提示','未找到坐标，无法点击。是否关闭进程？',['否','是'])
+        exit() if res else None
         return False
     for i in range(number):
         pyautogui.click(int(coord[0]), int(coord[1]))
@@ -149,7 +160,7 @@ def click(coord, number=1, interval=0.5):
 # 双击坐标
 def doubleClick(coord, interval=0.5):
     if coord[0] is None:
-        print("未找到坐标，无法点击")
+        print("未找到坐标=>无法点击")
         return False
     pyautogui.moveTo(coord[0], coord[1])   
     pyautogui.doubleClick(interval)

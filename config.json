@@ -20,12 +20,20 @@
     "image_prefix_name": "公共图片目录",
     "image_type": "png",
     "image_type_name": "默认图片类型",
+    "emulator_size": 320,
+    "emulator_ly_size": 320,
+    "emulator_size_name": "模拟器大小",
+    "emulator_coord_first_op": "300,268",
+    "emulator_coord_ly_first_op": "300,268",
+    "emulator_coord_first_op_name": "首个模拟器选项坐标",
+    "emulator_coord_first_center": "140,268",
+    "emulator_coord_ly_first_center": "140,268",
+    "emulator_coord_first_center_name": "首个模拟器中心坐标",
     "emulator_install_path": "D:\\records\\仓库\\安装包\\雷电安装包",
     "emulator_install_path_name": "模拟器安装包路径",
-    "emulator_coord_ly_size": 320,
-    "emulator_coord_ly_size_name": "模拟器大小",
-    "emulator_coord_ly_first_op": "300,268",
-    "emulator_coord_ly_first_op_name": "模拟器1选项坐标",
-    "emulator_coord_ly_first_center": "140,268",
-    "emulator_coord_ly_first_center_name": "模拟器1中心坐标"
+    "emulator_apk": [
+        "插件.apk",
+        "支付宝_v10.1.70.apk"
+    ],
+    "emulator_apk_name": "模拟器批量安装包名"
 }

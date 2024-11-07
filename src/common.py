@@ -9,8 +9,8 @@ import time
 import keyboard
 import json
 import re
-from dict import data as dict, common, ld_left_btn, ld_right_btn
-
+import os
+from data import dict
 pyautogui.FAILSAFE = True # 安全退出
 
 # 检查是否有指定名称的进程正在运行
@@ -56,7 +56,7 @@ def restart_app(app_path,process_name):
 def location(img_path,position="center",width=8,height=8):
     try:
         # 截取当前屏幕截图
-        screenshot = pyautogui.screenshot('image/screenshot.png')
+        screenshot = pyautogui.screenshot('screenshot.png')
         screenshot = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2GRAY)
 
         # 读取要查找的图片
@@ -87,7 +87,7 @@ def location(img_path,position="center",width=8,height=8):
 
 def v_location(img_path):
     # 截取屏幕截图
-    screenshot = pyautogui.screenshot('image/screenshot.png')
+    screenshot = pyautogui.screenshot('screenshot.png')
     screenshot = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
 
     # 加载模板图像
@@ -120,13 +120,28 @@ def v_location(img_path):
     center_y = topmost_match[1] + h // 2
     return (center_x, center_y)
 
+# 获取横向方位
+def horizontal(btn,left_btn=None, right_btn=None,center_btn=None):
+    left_btn = left_btn if left_btn else dict['left_btn']
+    right_btn = right_btn if right_btn else dict['right_btn']
+    center_btn = center_btn if center_btn else []
+
+    position_map = {param: 'left' for param in left_btn} # 将左侧按钮的键值对添加到字典中
+    position_map.update({param: 'right' for param in right_btn}) # 将右侧按钮的键值对添加到字典中
+    position_map.update({param: 'center' for param in center_btn}) # 将右侧按钮的键值对添加到字典中
+    # 使用get方法获取键对应的值，如果键不存在则返回默认值'center'
+    position = position_map.get(btn, 'center')
+    return position
+
 # 点击坐标
 def click(coord, number=1, interval=0.5):
+    if isinstance(coord, str):
+        coord = coord.split(',')
     if coord[0] is None:
         print("未找到坐标，无法点击")
         return False
     for i in range(number):
-        pyautogui.click(coord[0], coord[1])
+        pyautogui.click(int(coord[0]), int(coord[1]))
         if(i < number - 1):
             pyautogui.sleep(interval)
     return True
@@ -202,6 +217,7 @@ def write_json(path, data):
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
+# 判断是否包含中文以及中文标点符号
 def contains_chinese(text):
     # 定义一个匹配中文字符和中文标点符号的正则表达式模式
     pattern = re.compile(r'[\u4e00-\u9fff]|[\u3000-\u303f\uff00-\uffef]')
@@ -209,10 +225,18 @@ def contains_chinese(text):
     match = pattern.search(text)
     return match is not None
 
+# 打开电脑文件夹
+def open_file(path):
+    os.startfile(path)
+
 class Buttons:
-    def __init__(self, children='common', root='image', common='common'):  
-        self.common = root + '/' + common + '/' # 按钮图片公共目录
-        self.prefix = root + '/' + children + '/' # 按钮图片目录前缀
+    def __init__(self, prefix=None, suffix=None):
+        config = read_json("config.json") 
+        self.root = config['image_path']
+        self.common = config['image_prefix'] # 按钮图片公共目录
+        self.prefix = prefix if prefix else self.common # 按钮图片目录前缀
+        suffix = suffix if suffix else config['image_type'] # 按钮图片后缀
+        self.suffix =f".{suffix}"
         self.path = '' # 按钮图片路径
         self.btn = ''  # 按钮名称
         self.coord = {
@@ -228,7 +252,7 @@ class Buttons:
             '保存设置': (None, None),     
             '确定': (None, None),     
         }
-        print("初始化按钮坐标:", self.coord)    
+        print("初始化Buttons类:", self.prefix)    
 
     def 通用(self, num, position):
         coord = (None, None)
@@ -247,14 +271,13 @@ class Buttons:
         print(f'监听->{self.btn}点击按钮完成')
 
     def default(self, btn, num, listen):
-        if btn in dict:
+        current_dict = dict[self.prefix]
+        print('current_dict:',current_dict)
+        if btn in dict['global']:
             self.btn = btn
-            prefix = self.common if btn in common else self.prefix
-            self.path = prefix + dict[btn] + ".png"
-            position_map = {param: 'left' for param in ld_left_btn} # 将左侧按钮的键值对添加到字典中
-            position_map.update({param: 'right' for param in ld_right_btn}) # 将右侧按钮的键值对添加到字典中
-            # 使用get方法获取键对应的值，如果键不存在则返回默认值'center'
-            position = position_map.get(btn, 'center')
+            prefix = self.prefix if btn in current_dict else self.common
+            self.path = self.root + prefix + '/' + dict['global'][btn] + self.suffix
+            position = horizontal(btn)
             if listen:
                return self.监听点击(num, position)
             return self.通用(num, position)
@@ -262,25 +285,29 @@ class Buttons:
         return False
 
     def find(self, btn, listen=False):
-        if btn not in dict:
-            return (None, None)
         try :
+            coord = (None, None)
+            if btn not in dict['global']:
+                return coord
+            current_dict = dict[self.prefix]
+            prefix = self.prefix if btn in current_dict else self.common
+            path = self.root + prefix + '/' + dict['global'][btn] + self.suffix
+            position = horizontal(btn)
             while True:
-                
                 if keyboard.is_pressed('f8'):  # 长按F8停止
                     print("F8终止查找.")
                     break  # 跳出循环
-                coord = location(path, position, width)
-                if coord[0] is not None:
-                    count += 1
-                    click(coord)
-                    print("点击目标:", coord)
-                if count == number:
-                    print(f"监听点击完毕{count}次")
+                coord = location(path, position)
+                if coord[0]:
+                    print(f'{btn}-坐标：', coord)
+                    listen = False
+                if listen == False:
                     break
-                sleep(interval)
+                sleep(1)
+            return coord        
         except :
             print('终止查找.')
+            return (None, None)
 
     def click(self, btn, num=1, listen=False):
         """

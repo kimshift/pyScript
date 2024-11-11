@@ -189,7 +189,38 @@ def wait_click(path,config={}):
             sleep(interval)
     except :
         print('终止监听.')
+
+# 长按坐标
+def long_press(coord, button='left'):
+    if isinstance(coord, str):
+        coord = coord.split(',')
+        coord = (int(coord[0]), int(coord[1]))
+    if coord[0] is None:
+        print("未找到坐标=>无法长按")
+        res = confirm('提示','未找到坐标，无法长按。是否关闭进程？',['否','是'])
+        exit() if res else None
+        return False
+    # 按下鼠标右键 
+    pyautogui.mouseDown(int(coord[0]), int(coord[1]), button=button)
     
+
+def drag(start, end, button='left', duration=0.5):
+    if isinstance(end, str):
+        end = end.split(',')
+        end = (int(end[0]), int(end[1]))
+    long_press(start, button)
+    sleep(1)
+    if end[0] is None:
+        # 按下鼠标右键 
+        print("未找到坐标=>无法拖动")
+        res = confirm('提示','未找到坐标，无法拖动。是否关闭进程？',['否','是'])
+        exit() if res else None
+        return False
+    pyautogui.moveTo(end[0],end[1],duration=duration)  # duration 参数控制移动速度 
+    pyautogui.mouseUp()
+    
+    
+
 # 点击键盘
 def click_key(key):
     # pyautogui.keyDown(key)
@@ -283,7 +314,6 @@ class Buttons:
 
     def default(self, btn, num, listen):
         current_dict = dict[self.prefix]
-        print('current_dict:',current_dict)
         if btn in dict['global']:
             self.btn = btn
             prefix = self.prefix if btn in current_dict else self.common

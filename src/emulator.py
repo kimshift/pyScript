@@ -7,8 +7,6 @@ class Main:
         config = device.read_json("config.json")
         self.app_path = config['emulator_path']
         self.process_name = config['emulator_process_name']
-        self.emulator_size = int(config['emulator_size'])
-        self.emulator_op = config['emulator_coord_first_op']
         self.buttons = Buttons("emulator") # 初始化点击按钮类
         self.config = config
 
@@ -69,7 +67,11 @@ class Main:
     
     # 开启同步
     def open_async(self):
-        first_op = self.config['emulator_coord_ly_first_op']
+        device.open_app(self.app_path)
+        self.buttons.click("排列窗口")
+        self.buttons.click("最小化雷电多开")
+        device.sleep(0.5)
+        first_op = self.config['emulator_coord_info_map']['first_op']
         device.click(first_op) # 点击第一个模拟器的选项
         self.buttons.click("同步选项")
         self.buttons.click("全选")
@@ -77,7 +79,11 @@ class Main:
 
     # 关闭同步
     def close_async(self):
-        first_op = self.config['emulator_coord_ly_first_op']
+        device.open_app(self.app_path)
+        self.buttons.click("排列窗口")
+        self.buttons.click("最小化雷电多开")
+        device.sleep(0.5)
+        first_op = self.config['emulator_coord_info_map']['first_op']
         device.click(first_op) # 点击第一个模拟器的选项
         self.buttons.click("同步选项")
         self.buttons.click("关闭同步")
@@ -103,6 +109,7 @@ class Main:
         self.buttons.click("文件打开")
         print(f"{app_name}安装中...")
 
+    # 批量安装应用
     def batch_install(self,coord,app_names):
         device.open_app(self.app_path)
         self.buttons.click("排列窗口")
@@ -113,34 +120,79 @@ class Main:
             # 如果不是最后一个
             if app_name != app_names[-1]:
                 device.sleep(1)
-    
+        print("批量安装操作完成.")
+
+    # 应用设置
+    def app_setting(self, open_app=True):
+        if open_app:
+            device.open_app(self.app_path)
+            self.buttons.click("排列窗口")
+            self.buttons.click("最小化雷电多开")
+            device.sleep(1)
+        device.alert("请确认已打开...")
+        info_map = self.config['emulator_coord_info_map']
+        ant = info_map['ant_app_xy']
+        info = info_map['app_info_xy']
+        device.drag(ant,info)
+        device.sleep(3)
+        
+        # self.buttons.click("支付宝权限")
+        device.click(info_map['app_auth'])
+        device.sleep(1)
+        # self.buttons.click("存储空间")
+        # device.sleep(0.5)
+        # self.buttons.click("电话")
+        # device.sleep(0.5)
+        # self.buttons.click("麦克风")
+        # device.sleep(0.5)
+        # self.buttons.click("通讯录")
+        # device.sleep(0.5)
+        # self.buttons.click("位置信息")
+        # device.sleep(0.5)
+        # self.buttons.click("相机")
+        for i in range(info_map['auth_number']):
+            y = info_map['auth_start'][1] + info_map['auth_height'] * i
+            coord = (info_map['auth_start'][0],y)
+            device.click(coord)
+            # 如果不是最后一个权限
+            device.sleep(1)
+        device.click(info_map['first_task'])
+        device.sleep(1)
+        device.click(info_map['first_task_clear'])
+        print("应用设置完成")
+
     # 自动创建雷电模拟器
     def create(self):
         device.restart_app(self.app_path,self.process_name)
         device.sleep(0.3)
         # 创建雷电模拟器
-        # self.buttons.click("批量操作")
-        # self.buttons.click("批量新增")
+        self.buttons.click("批量操作")
+        self.buttons.click("批量新增")
         # 配置雷电模拟器
-        # self.batch_setting()
+        self.batch_setting()
         # 启动雷电模拟器
         data = device.read_json("config.json")
         id = data["emulator_num"] # 最后一个雷电模拟器id
         start = id + 1 # 起始id
         end = id + data["batch_start_num"] # 结束id
         print("启动雷电模拟器：",start,"-",end)
-        # self.batch_start(start, end)
-        # device.sleep(5)
+        self.batch_start(start, end)
+        device.sleep(5)
         # 批量安装apk
-        app_names = self.config['emulator_apk']
-        emulator_op=self.emulator_op.split(',')
+        app_names = data['emulator_apk']
+        first_op = data['emulator_coord_info_map']['first_op']
         for i in range(data["batch_start_num"]):
-            x = int(emulator_op[0]) + self.emulator_size * i
-            coord_op= (x, int(emulator_op[1]))
+            x = int(first_op[0]) + data['emulator_size'] * i
+            coord_op= (x, int(first_op[1]))
             self.batch_install(coord_op, app_names)
             if i != data["batch_start_num"]-1:
                 device.sleep(1)
-        # self.open_async()
+        device.alert("请确认安装完成...")
+        self.open_async()
+        device.sleep(1)
+        self.app_setting(False)
+        device.sleep(1)
+        self.close_async()
 
     # 备份雷电模拟器
     def backup(self):
@@ -214,7 +266,7 @@ if __name__ == '__main__':
         print("argv:", sys.argv[1:])
         method = sys.argv[1]
     else:
-        method = 'create' # dev模式使用
+        method = 'app_setting' # dev模式使用
     emulator = Main() # 实例化模拟器类
     # emulator.buttons.click("最小化vscode")   
     emulator.switch(method)

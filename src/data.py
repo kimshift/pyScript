@@ -33,6 +33,14 @@ emulator = {
     '关闭雷电多开': 'close_ld_dk',
     'APK选项': 'apk_op',
     '选择APK': 'select_apk',
+    '支付宝app': 'ant_app',
+    '支付宝权限': 'ant_auth',
+    '存储空间':'storage_space',
+    '电话':'phone',
+    '麦克风':'microphone',
+    '通讯录':'address_book',
+    '位置信息':'location_info',
+    '相机':'camera',
 }
 
 common = {

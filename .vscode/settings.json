@@ -1,5 +1,12 @@
 {
   "cSpell.words": ["psutil", "pyautogui", "pyperclip"],
   "editor.formatOnSave": false,
-  "editor.defaultFormatter": "esbenp.prettier-vscode"
+  "editor.defaultFormatter": "ms-python.black-formatter",
+  "terminal.integrated.defaultProfile.windows": "Command Prompt", //默认终端
+  "code-runner.runInTerminal": true,
+  // 指定解释器
+  "code-runner.executorMap": {
+    "python": "python"
+    // "python": "python $fullFileName && del $dir\"tempCodeRunnerFile.py\""
+  }
 }

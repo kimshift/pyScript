@@ -261,7 +261,7 @@ if __name__ == '__main__':
         print("argv:", sys.argv[1:])
         method = sys.argv[1]
     else:
-        method = 'create' # dev模式使用
+        method = 'default' # dev模式使用
     emulator = Main() # 实例化模拟器类
     # emulator.buttons.click("最小化vscode")
     emulator.switch(method)

@@ -1,7 +1,7 @@
 {
     "name": "缓存数据",
-    "emulator_num": 125,
-    "emulator_num_name": "已存在模拟器数量",
+    "emulator_end_id": 135,
+    "emulator_end_id_name": "最后模拟器id",
     "batch_start_num": 5,
     "batch_start_num_name": "批量启动数量",
     "backup_start_id": 0,
@@ -22,12 +22,21 @@
     "image_type_name": "默认图片类型",
     "emulator_size": 320,
     "emulator_size_name": "模拟器大小",
-    "emulator_coord_info_map":{
-        "first_op": [300, 268],
+    "emulator_coord_info_map": {
+        "first_op": [
+            300,
+            268
+        ],
         "first_op_name": "首个模拟器选项坐标",
-        "first_task": [300, 490],
+        "first_task": [
+            300,
+            490
+        ],
         "first_task_name": "首个模拟器任务栏坐标",
-        "first_task_clear": [240, 77],
+        "first_task_clear": [
+            240,
+            77
+        ],
         "first_task_clear_name": "首个模拟器任务栏清理坐标",
         "first_center": "140,268",
         "first_center_name": "首个模拟器中心坐标",
@@ -41,7 +50,10 @@
         "auth_number_name": "授权个数",
         "auth_height": 40,
         "auth_height_name": "单个授权高度",
-        "auth_start": [90, 160],
+        "auth_start": [
+            90,
+            160
+        ],
         "auth_start_name": "应用授权起始坐标"
     },
     "emulator_install_path": "D:\\records\\仓库\\安装包\\雷电安装包",

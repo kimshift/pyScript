@@ -198,7 +198,8 @@ class Main:
         # device.alert('请确认模拟器已启动...')
         self.sort_win()
         self.batch_install_fixed() # 安装应用
-        device.alert("请确认已安装完成...")
+        # device.alert("请确认已安装完成...")
+        device.sleep(5)
         self.open_async(False) # 开启模拟器同步
         device.sleep(1)
         self.app_setting(False) # 应用设置

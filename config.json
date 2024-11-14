@@ -1,6 +1,6 @@
 {
     "name": "缓存数据",
-    "emulator_end_id": 135,
+    "emulator_end_id": 140,
     "emulator_end_id_name": "最后模拟器id",
     "batch_start_num": 5,
     "batch_start_num_name": "批量启动数量",

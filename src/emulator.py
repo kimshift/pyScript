@@ -39,6 +39,7 @@ class Main:
         if status==True:
             device.open_app(self.app_path)
             self.buttons.click("排列窗口")
+            device.sleep(1)
             self.buttons.click("最小化雷电多开")
             device.sleep(1)
 
@@ -181,7 +182,7 @@ class Main:
     # 自动创建雷电模拟器
     def create(self):
         device.restart_app(self.app_path,self.process_name)
-        device.sleep(0.3)
+        device.sleep(1)
         # # 创建雷电模拟器
         self.buttons.click("批量操作")
         self.buttons.click("批量新增")
@@ -197,6 +198,20 @@ class Main:
         device.sleep(3)
         # device.alert('请确认模拟器已启动...')
         self.sort_win()
+        device.sleep(1)
+        self.batch_install_fixed() # 安装应用
+        # device.alert("请确认已安装完成...")
+        device.sleep(5)
+        self.open_async(False) # 开启模拟器同步
+        device.sleep(1)
+        self.app_setting(False) # 应用设置
+        device.sleep(1)
+        self.close_async(False) # 关闭模拟器同步
+        self.update_config() # 更新配置信息
+
+    def create_con(self):
+        self.sort_win()
+        device.sleep(1)
         self.batch_install_fixed() # 安装应用
         # device.alert("请确认已安装完成...")
         device.sleep(5)
@@ -279,7 +294,7 @@ if __name__ == '__main__':
         print("argv:", sys.argv[1:])
         method = sys.argv[1]
     else:
-        method = 'update_config' # dev模式使用
+        method = 'create_con' # dev模式使用
     emulator = Main() # 实例化模拟器类
     # emulator.buttons.click("最小化vscode")
     emulator.switch(method)

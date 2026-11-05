@@ -75,10 +75,12 @@ uv run python -m tools.{name}
 在根目录 `pyproject.toml` 的 `[project.optional-dependencies]` 里登记，
 优先复用已有分组，避免重复声明。
 
-## 配置 / 资源
+## 配置 / 资源 / 日志
 
-- 配置：`tools/{name}/config.json`
+- 配置：`config/{name}.json`（统一放仓库根目录；代码里用 `kit.paths.config_path("{name}")` 定位）
+  - 本机私有值放 `config/{name}.local.json`（已 gitignore），**不要**写进公共配置
 - 资源：`tools/{name}/assets/`
+- 日志：`logs/{name}/`（统一放仓库根目录；代码里用 `kit.paths.log_dir("{name}")` 定位）
 '''
 
 GITKEEP = ""
@@ -102,7 +104,7 @@ def scaffold(name: str) -> int:
 
     print(f"已生成：tools/{name}/")
     print("下一步：")
-    print(f"  1) 依赖登记到 pyproject.toml 的 [project.optional-dependencies]")
+    print("  1) 依赖登记到 pyproject.toml 的 [project.optional-dependencies]")
     print(f"  2) mise.toml 增加 task：uv run --extra <组名> python -m tools.{name}")
     print(f"  3) 运行：uv run python -m tools.{name}")
     return 0

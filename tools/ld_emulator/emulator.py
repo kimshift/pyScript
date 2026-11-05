@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """雷电模拟器批量自动化 —— 业务编排层。
 
-后端策略（可在 config.json 用 "backend" 切换）
+后端策略（可在 config/ld_emulator.json 用 "backend" 切换）
 --------------------------------------------
 * "cli"（默认）：能用官方 `ldconsole` 的动作用命令行完成，
   只有「同步器开关」「模拟器内应用权限」这类没有接口的步骤才走 GUI。
 * "gui"：保留重构前的纯图像匹配 + 点击流程，作为回滚开关。
 
-两套后端共用同一份 config.json 与按钮映射，切换不需要改代码。
+两套后端共用同一份 config/ld_emulator.json 与按钮映射，切换不需要改代码。
 """
 
 import os
@@ -24,19 +24,30 @@ log = get_logger("ld_emulator")
 class Main:
     def __init__(self, backend: str | None = None):
         self.config = device.read_config()
-        self.app_path = self.config['emulator_path']
+        # 未配置时返回 None，交给后端自动探测，不再依赖本机写死的路径
+        self.app_path = device.resolve_path(self.config.get('emulator_path'))
         self.process_name = self.config['emulator_process_name']
 
         self.backend = (backend or self.config.get('backend', 'cli')).lower()
         self.ld = None
         if self.backend == 'cli':
             try:
-                self.ld = LdConsole.from_emulator_path(self.app_path)
+                if self.app_path:
+                    self.ld = LdConsole.from_emulator_path(self.app_path)
+                else:
+                    self.ld = LdConsole()  # 走 LDPLAYER_DIR / PATH / 常见目录探测
+                    guess = self.ld.exe.parent / self.process_name
+                    self.app_path = guess if guess.is_file() else None
                 log.info("后端：ldconsole（%s）", self.ld.exe)
             except LdConsoleError as exc:
                 log.warning("CLI 后端不可用（%s），本次回退到 GUI", exc)
                 self.backend = 'gui'
         if self.backend == 'gui':
+            if not self.app_path:
+                log.warning(
+                    "emulator_path 未配置，GUI 后端无法启动模拟器；"
+                    "请在 config/ld_emulator.local.json 里填 dnmultiplayer.exe 路径"
+                )
             log.info("后端：GUI（图像匹配 + 鼠标点击）")
 
         self.use_cli = self.backend == 'cli'
@@ -48,7 +59,7 @@ class Main:
     def info(self):
         """列出所有实例（不操作任何东西）。"""
         if not self.use_cli:
-            print("info 需要 CLI 后端（config.json 里 backend 设为 cli）")
+            print("info 需要 CLI 后端（config/ld_emulator.json 里 backend 设为 cli）")
             return
         instances = self.ld.list2()
         if not instances:
@@ -180,7 +191,7 @@ class Main:
     def _apply_settings_cli(self, ids):
         """用 ldconsole modify 替代 batch_setting 的 9 步点击。
 
-        只有在 config.json 里显式配置了 emulator_resolution / emulator_memory
+        只有在 config/ld_emulator.json 里显式配置了 emulator_resolution / emulator_memory
         时才会修改对应项；没配置就跳过并提示，绝不猜值。
         """
         resolution = self.config.get('emulator_resolution')
@@ -188,7 +199,7 @@ class Main:
         if not resolution and not memory:
             log.warning(
                 "未配置 emulator_resolution / emulator_memory，跳过参数修改"
-                "（实例将使用雷电默认值）。需要的话在 config.json 里补上，例如 "
+                "（实例将使用雷电默认值）。需要的话在 config/ld_emulator.json 里补上，例如 "
                 '"emulator_resolution": "1080,1920,480"'
             )
             return
@@ -228,8 +239,8 @@ class Main:
         self.buttons.click("选择APK")
         device.sleep(1)
         self.buttons.click("路径搜索")
-        path = self.config['emulator_install_path']
-        device.paste(path)
+        install_dir = self._install_dir()
+        device.paste(str(install_dir))
         device.sleep(0.1)
         device.click_key("enter")
         self.buttons.click("文件搜索")
@@ -278,9 +289,19 @@ class Main:
         running.sort(key=lambda x: x.index, reverse=True)
         return [i.index for i in running[:n]]
 
+    def _install_dir(self):
+        """APK 所在目录；未配置或不存在就明确报错，而不是往对话框里粘空路径。"""
+        path = device.resolve_path(self.config.get('emulator_install_path'))
+        if path is None or not path.is_dir():
+            raise RuntimeError(
+                "emulator_install_path 未配置或目录不存在："
+                "请在 config/ld_emulator.local.json 里填 APK 所在目录"
+            )
+        return path
+
     def _batch_install_cli(self):
         app_names = self.config['emulator_apk']
-        install_dir = self.config['emulator_install_path']
+        install_dir = self._install_dir()
         targets = self._install_targets()
         if not targets:
             print("没有可安装的目标实例（没有运行中的模拟器）")
@@ -324,12 +345,15 @@ class Main:
     # ================= 配置回写 =================
 
     def update_config(self):
-        data = device.read_config()
-        id = data["emulator_end_id"]  # 最后一个雷电模拟器id
-        num = data["batch_start_num"]  # 批量启动数量
-        data["emulator_end_id"] = id + num
-        device.write_json(device.CONFIG_PATH, data)
-        print("配置更新完成")
+        # emulator_end_id 是「已经创建到第几个」的运行进度，随每次 create 递增。
+        # 它属于本机状态，写进 config/ld_emulator.local.json（已 gitignore）：
+        # 若写回公共配置，每跑一次 create 仓库就多一处未提交改动。
+        # 只改 local 里这一个键，路径等其它私有值原样保留。
+        local = device.read_local_config()
+        local["emulator_end_id"] = int(self.config["emulator_end_id"]) + int(self.config["batch_start_num"])
+        device.write_json(device.LOCAL_CONFIG_PATH, local)
+        self.config["emulator_end_id"] = local["emulator_end_id"]  # 同步内存，后续动作读到新值
+        print(f"配置更新完成：emulator_end_id -> {local['emulator_end_id']}（已记录在本机 local 配置）")
 
     # ================= 创建 =================
 
@@ -436,13 +460,24 @@ class Main:
 
     # ================= 备份 / 还原 =================
 
+    def _backup_dir(self, create=True):
+        """备份目录；未配置就明确报错，不再回落到写死的 D:\\Program Files\\LDPlayer9\\backup。"""
+        path = device.resolve_path(self.config.get('backup_path'))
+        if path is None:
+            raise RuntimeError(
+                "backup_path 未配置：请在 config/ld_emulator.local.json 里填备份目录"
+            )
+        if create:
+            path.mkdir(parents=True, exist_ok=True)
+        return path
+
     def backup(self):
         if self.use_cli:
             return self._backup_cli()
         data = device.read_config()
         start = data["backup_start_id"]
         end = data["backup_end_id"]
-        backup_path = data.get("backup_path", "D:\\Program Files\\LDPlayer9\\backup")
+        backup_path = self._backup_dir()
         while start <= end:
             device.open_app(self.app_path)
             status = self.search(start)
@@ -454,7 +489,7 @@ class Main:
             self.buttons.click("备份")
             device.sleep(1)
             self.buttons.click("路径搜索")
-            device.paste(backup_path)
+            device.paste(str(backup_path))
             device.sleep(0.1)
             device.click_key("enter")
             device.sleep(0.1)
@@ -466,10 +501,7 @@ class Main:
     def _backup_cli(self):
         data = self.config
         start, end = int(data["backup_start_id"]), int(data["backup_end_id"])
-        backup_dir = data.get("backup_path", "")
-        if not backup_dir:
-            print("config.json 未配置 backup_path")
-            return
+        backup_dir = self._backup_dir()
         print(f"CLI 备份 {start} - {end} -> {backup_dir}")
         ok = 0
         for i in range(start, end + 1):
@@ -489,7 +521,7 @@ class Main:
         data = device.read_config()
         start = data["backup_start_id"]
         end = data["backup_end_id"]
-        backup_path = data.get("backup_path", "D:\\Program Files\\LDPlayer9\\backup")
+        backup_path = self._backup_dir()
         while start <= end:
             device.open_app(self.app_path)
             status = self.search(start)
@@ -501,7 +533,7 @@ class Main:
             self.buttons.click("还原")
             device.sleep(1)
             self.buttons.click("路径搜索")
-            device.paste(backup_path)
+            device.paste(str(backup_path))
             device.sleep(0.1)
             device.click_key("enter")
             self.buttons.click("文件搜索")
@@ -516,7 +548,7 @@ class Main:
     def _restore_cli(self):
         data = self.config
         start, end = int(data["backup_start_id"]), int(data["backup_end_id"])
-        backup_dir = data.get("backup_path", "")
+        backup_dir = self._backup_dir(create=False)
         print(f"CLI 还原 {start} - {end} <- {backup_dir}")
         ok = 0
         for i in range(start, end + 1):

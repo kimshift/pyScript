@@ -53,16 +53,25 @@ pyScript/
 │   ├── paths.py            仓库/脚本目录定位
 │   ├── config.py           JSON 配置读写
 │   └── log.py              统一日志
-├── tools/                  一个子目录 = 一个脚本
-│   └── ld_emulator/        雷电模拟器批量自动化
-│       ├── __main__.py     入口：python -m tools.ld_emulator <动作>
-│       ├── emulator.py     业务动作（create/start/backup/restore/...）
-│       ├── common.py       键鼠 / 模板匹配 / 进程封装
-│       ├── data.py         按钮名 → 图片文件名 映射
-│       ├── backends/       外部接口封装：ldconsole.py（官方命令行）
-│       ├── adapters/       可替换的底层库：screen(mss) / hotkey(pynput) / dialog(tkinter)
-│       ├── config.json     本脚本配置
-│       └── assets/image/   模板图片（common/ 与 emulator/）
+├── tools/                  一个子目录 = 一个脚本（只放代码与资源）
+│   ├── ld_emulator/        雷电模拟器批量自动化
+│   │   ├── __main__.py     入口：python -m tools.ld_emulator <动作>
+│   │   ├── emulator.py     业务动作（create/start/backup/restore/...）
+│   │   ├── common.py       键鼠 / 模板匹配 / 进程封装
+│   │   ├── data.py         按钮名 → 图片文件名 映射
+│   │   ├── backends/       外部接口封装：ldconsole.py（官方命令行）
+│   │   ├── adapters/       可替换的底层库：screen(mss) / hotkey(pynput) / dialog(tkinter)
+│   │   └── assets/image/   模板图片（common/ 与 emulator/）
+│   └── wb_reward/          WorkBuddy 积分签到（计划任务驱动）
+│       ├── __main__.py     入口：python -m tools.wb_reward <动作>
+│       └── runner.py       调用 workbuddy-reward-helper，含重试/互斥/日志轮转
+├── config/                 所有脚本的配置集中在这里（详见 config/README.md）
+│   ├── README.md           新电脑怎么配（先看这个）
+│   ├── ld_emulator.json    雷电自动化的公共配置
+│   └── wb_reward.json      积分签到的超时/重试/日志上限
+│   └── *.local.json        本机私有覆盖（gitignore 忽略，不入库）
+├── logs/                   所有脚本的运行日志，按脚本名分子目录（不入库）
+│   └── wb_reward/          scheduler.log（执行过程）+ result.log（结果摘要）
 ├── scripts/
 │   ├── new_tool.py         新脚本脚手架
 │   └── release.sh          推送到 gitee / github
@@ -119,7 +128,7 @@ python scripts/new_tool.py my_tool     # 生成 tools/my_tool/ 骨架
 
 等价的底层写法：`uv run --extra ld python -m tools.ld_emulator <动作> [--backend gui]`
 
-### 两种后端（`config.json` 的 `backend`）
+### 两种后端（`config/ld_emulator.json` 的 `backend`）
 
 | 后端 | 覆盖范围 | 说明 |
 |---|---|---|
@@ -130,7 +139,12 @@ python scripts/new_tool.py my_tool     # 生成 tools/my_tool/ 骨架
 
 `npm run create_ld` / `serve_ld` / `create_txt` 仍可用（已改为转发到 mise）。Windows 双击：`script/创建雷电.bat`、`script/启动雷电.bat`。
 
-### 配置（tools/ld_emulator/config.json）
+### 配置（config/ld_emulator.json）
+
+> **所有配置都在仓库根 `config/` 下**，新机器只需看这一个目录：见 [`config/README.md`](config/README.md)。
+> **机器私有路径不写进公共配置。** `emulator_path` / `backup_path` / `emulator_install_path` 三项默认为空，
+> 本机真实值请填进 `config/ld_emulator.local.json`（已 gitignore，不会被提交）。
+> 新机器：`cp config/ld_emulator.local.example.json config/ld_emulator.local.json` 后按需修改；留空则走自动探测。
 
 | 字段 | 说明 |
 |---|---|
@@ -138,15 +152,19 @@ python scripts/new_tool.py my_tool     # 生成 tools/my_tool/ 骨架
 | `emulator_name_prefix` | 新建实例的名称前缀，默认 `雷电-`（编号拼在后面，如 `雷电-248`） |
 | `emulator_resolution` | 新建/修改实例的分辨率 `宽,高,dpi`，如 `1080,1920,480`；留空则不修改 |
 | `emulator_memory` | 实例内存 MB（256/512/1024/2048/4096）；`null` 表示不修改 |
-| `emulator_path` | 雷电多开器可执行文件路径（`D:\leidian\LDPlayer9\dnmultiplayer.exe`） |
+| `emulator_path` | 雷电多开器可执行文件路径；**留空=自动探测**（`LDPLAYER_DIR` → PATH → 常见目录） |
 | `emulator_process_name` | 进程名 |
-| `emulator_end_id` | 当前最后一个模拟器 ID |
+| `emulator_end_id` | 创建起点（0=从 `雷电-1` 开始）。**运行进度自动记在 `config/ld_emulator.local.json`**，不回写这里 |
 | `batch_start_num` | 批量创建/启动数量 |
 | `backup_start_id` / `backup_end_id` | 备份/还原的 ID 范围 |
-| `backup_path` | 备份目录（`D:\leidian\LDPlayer9\backup`） |
+| `backup_path` | 备份目录；留空则备份时报「未配置」而不是静默失败 |
 | `emulator_apk` | 批量安装的 APK 列表 |
+| `emulator_install_path` | APK 所在目录；留空则装包时报「未配置」 |
 | `image_path` | 模板图片根目录（现为 `assets/image/`，相对脚本目录） |
 | `emulator_coord_info_map` | 坐标与布局参数（分辨率/DPI 变化时需重新核对） |
+
+三个路径字段都支持 `~`、`%LOCALAPPDATA%`、`$HOME` 展开，相对路径按 `tools/ld_emulator/` 解析。
+也可以不建 local 文件，直接 `set LDPLAYER_DIR=D:\leidian\LDPlayer9` 让 CLI 后端自己找。
 
 ### 注意事项
 
@@ -155,6 +173,19 @@ python scripts/new_tool.py my_tool     # 生成 tools/my_tool/ 骨架
 - **分辨率/DPI 敏感**：模板匹配与固定坐标都依赖当前 1920×1080 @100% 的显示设置，换机器前先核对 `emulator_coord_info_map`。
 
 ---
+
+## WorkBuddy 积分签到（tools/wb_reward）
+
+调用 `workbuddy-reward-helper` skill 完成签到 / 旅行 / 成长计划，由 **Windows 计划任务**驱动，WorkBuddy 客户端不开也能跑。细节见 [`tools/wb_reward/README.md`](tools/wb_reward/README.md)。
+
+| 命令 | 说明 |
+|---|---|
+| `mise run wb:all` | 签到 + 旅行（默认动作） |
+| `mise run wb:checkin` / `wb:travel` / `wb:growth` | 单项执行 |
+| `mise run wb:health` | 登录态健康检查（token 有效期 + 只读探活） |
+| `mise run wb:status` | 只读探活 |
+
+10 个时间点（健康 07:45；签到 09:00/13:00/20:00；旅行 08:15/12:30/16:45/21:00；成长 10:00/19:30）由 [`script/setup_wb_tasks.ps1`](script/setup_wb_tasks.ps1) 注册，动作指向 `.venv\Scripts\pythonw.exe -m tools.wb_reward <动作>`，无控制台窗口。
 
 ## 文档
 

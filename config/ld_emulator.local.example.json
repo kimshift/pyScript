@@ -1,0 +1,6 @@
+{
+    "_说明": "复制本文件为 ld_emulator.local.json 后填入本机路径。该文件已被 .gitignore 忽略，不会被提交。留空的项会走自动探测或在使用时报出明确提示。",
+    "emulator_path": "C:\\LDPlayer\\LDPlayer9\\dnmultiplayer.exe",
+    "backup_path": "C:\\LDPlayer\\LDPlayer9\\backup",
+    "emulator_install_path": "C:\\apk\\雷电安装包"
+}

@@ -36,12 +36,15 @@ log = get_logger(__name__)
 
 LD_EXE = "ldconsole.exe"
 
-# 找不到 exe 时会尝试这些常见安装位置
+# 探测顺序：环境变量 LDPLAYER_DIR > PATH 里的 ldconsole.exe > 下面这些常见安装位置。
+# 支持 %VAR% / ~ 展开，换台机器装到别处时不必改代码。
 _FALLBACK_DIRS = (
+    r"%LOCALAPPDATA%\leidian\LDPlayer9",
+    r"C:\LDPlayer\LDPlayer9",
+    r"C:\Program Files\LDPlayer9",
+    r"D:\LDPlayer\LDPlayer9",
     r"D:\leidian\LDPlayer9",
     r"D:\Program Files\LDPlayer9",
-    r"C:\LDPlayer\LDPlayer9",
-    r"D:\LDPlayer\LDPlayer9",
 )
 
 
@@ -80,15 +83,28 @@ class LdConsole:
             if path.is_file():
                 return path
             raise LdConsoleError(f"ldconsole 不存在：{path}")
+
+        # 1) 环境变量优先：set LDPLAYER_DIR=D:\leidian\LDPlayer9
+        env_dir = os.environ.get("LDPLAYER_DIR")
+        if env_dir:
+            candidate = Path(os.path.expandvars(os.path.expanduser(env_dir))) / LD_EXE
+            if candidate.is_file():
+                return candidate
+
+        # 2) PATH
         found = shutil.which(LD_EXE)
         if found:
             return Path(found)
+
+        # 3) 常见安装位置（支持 %LOCALAPPDATA% 等展开）
         for base in _FALLBACK_DIRS:
-            candidate = Path(base) / LD_EXE
+            candidate = Path(os.path.expandvars(os.path.expanduser(base))) / LD_EXE
             if candidate.is_file():
                 return candidate
+
         raise LdConsoleError(
-            "找不到 ldconsole.exe：请确认 config.json 的 emulator_path 指向雷电安装目录，或把该目录加入 PATH"
+            "找不到 ldconsole.exe：请设环境变量 LDPLAYER_DIR 指向雷电安装目录，"
+            "或在 config/ld_emulator.local.json 里填 emulator_path"
         )
 
     @classmethod

@@ -1,0 +1,11 @@
+{
+    "skill_scripts": "",
+    "python": "",
+    "run_timeout": 180,
+    "retry_max": 3,
+    "retry_delay": 6,
+    "lock_timeout": 300,
+    "log_max_bytes": 1048576,
+    "log_max_lines": 2000,
+    "token_info": ""
+}

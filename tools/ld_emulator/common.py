@@ -10,7 +10,8 @@ import json
 import re
 import os
 
-from kit.paths import tool_dir
+from kit.config import expand_path, load_config, local_config_path
+from kit.paths import config_path, tool_dir
 from tools.ld_emulator.data import BUTTONS
 from tools.ld_emulator.adapters import alert as _dialog_alert
 from tools.ld_emulator.adapters import confirm as _dialog_confirm
@@ -18,9 +19,12 @@ from tools.ld_emulator.adapters import hotkey, screen
 
 pyautogui.FAILSAFE = True  # FAILSAFE=True: 鼠标移到屏幕左上角触发 FailSafeException, 防误触
 
-# 本工具根目录（tools/ld_emulator/）：配置、图片、产物都相对它解析，摆脱对工作目录的依赖
+# 本工具根目录（tools/ld_emulator/）：图片、产物都相对它解析，摆脱对工作目录的依赖
 PROJECT_ROOT = str(tool_dir("ld_emulator"))
-CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config.json')
+# 配置统一在仓库根 config/ 下：config/ld_emulator.json + config/ld_emulator.local.json
+CONFIG_PATH = str(config_path("ld_emulator"))
+# 机器私有覆盖（已 gitignore）：雷电装在哪、备份放哪之类，只留在本机
+LOCAL_CONFIG_PATH = str(local_config_path(CONFIG_PATH))
 
 
 def _imread(path, flags=cv2.IMREAD_GRAYSCALE):
@@ -66,7 +70,11 @@ def close_running_process(process_name, timeout=10):
 
 # 打开应用
 def open_app(app_path):
-    subprocess.Popen(app_path)
+    if not app_path:
+        raise RuntimeError(
+            "emulator_path 未配置：请在 config/ld_emulator.local.json 里填雷电 dnmultiplayer.exe 的路径"
+        )
+    subprocess.Popen(str(app_path))
     pyautogui.sleep(1)
 
 # 关闭应用
@@ -293,9 +301,33 @@ def read_json(path):
         print(f"配置文件 JSON 格式错误: {path} -> {e}")
         return {}
 
-# 读取项目根目录下的 config.json
+# 读取配置：config/ld_emulator.json 打底，config/ld_emulator.local.json 覆盖（机器私有路径只放后者）
 def read_config():
-    return read_json(CONFIG_PATH)
+    return load_config(CONFIG_PATH)
+
+
+def read_local_config():
+    """只读机器私有配置本身（不叠加公共层），文件不存在返回空 dict。
+
+    用于回写运行状态：先读现有 local 再改键，避免把公共配置整份复制进来。
+    """
+    if not os.path.isfile(LOCAL_CONFIG_PATH):
+        return {}
+    return read_json(LOCAL_CONFIG_PATH)
+
+
+def resolve_path(value, must_exist=False):
+    """把配置里的路径值转成绝对 Path。
+
+    支持 ~、%LOCALAPPDATA%、$HOME，以及相对路径（相对 tools/ld_emulator/）。
+    空值返回 None；must_exist=True 时不存在也返回 None，交给调用方走自动探测。
+    """
+    path = expand_path(value, base=PROJECT_ROOT)
+    if path is None:
+        return None
+    if must_exist and not path.exists():
+        return None
+    return path
 
 # 写入json文件
 def write_json(path, data):

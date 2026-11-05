@@ -19,8 +19,15 @@ screenshot.png
 # 脚本产物
 cache.txt
 
-# 编辑器/助手工作目录
-# .workbuddy/
+# 各脚本的运行日志（统一在根目录，内容不入库）
+/logs/
+
+# 机器私有配置：只在本地保留真实路径，仓库里存 config/<脚本名>.json 的通用值
+# 模板见 config/*.local.example.json
+*.local.json
+
+# 编辑器/助手工作目录（AI 笔记含本机用户名/盘符，不入库）
+.workbuddy/
 # AI Log Plugin 推荐忽略项
 .specstory/
 .ailog/

@@ -57,8 +57,33 @@ run = "uv run --extra ld python -m tools.ld_emulator quitall"
 description = "强制走旧 GUI 流程（回滚用），默认 create_con"
 run = "uv run --extra ld python -m tools.ld_emulator create_con --backend gui"
 
-# ---------- 质量 ----------
+# ---------- WorkBuddy 积分签到（tools/wb_reward） ----------
 
+[tasks."wb:all"]
+description = "签到 + 旅行（默认动作）"
+run = "uv run python -m tools.wb_reward all"
+
+[tasks."wb:checkin"]
+description = "只执行签到"
+run = "uv run python -m tools.wb_reward checkin"
+
+[tasks."wb:travel"]
+description = "只执行旅行计划"
+run = "uv run python -m tools.wb_reward travel"
+
+[tasks."wb:growth"]
+description = "成长计划：有可领档位才领取"
+run = "uv run python -m tools.wb_reward growth auto"
+
+[tasks."wb:health"]
+description = "登录态健康检查（token 有效期 + 只读探活）"
+run = "uv run python -m tools.wb_reward health"
+
+[tasks."wb:status"]
+description = "只读探活"
+run = "uv run python -m tools.wb_reward status"
+
+# ---------- 质量 ----------
 [tasks.dev]
 description = "安装开发依赖（pytest / ruff）"
 run = "uv sync --extra ld --extra dev"

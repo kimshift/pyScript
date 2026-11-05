@@ -1,4 +1,4 @@
 @echo off
-cd /d "D:\workplace\private\pyScript"
-npm run create_ld
+cd /d "%~dp0.."
+mise run ld:create
 @REM pause

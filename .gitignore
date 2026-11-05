@@ -1,10 +1,26 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# production
-__pycache__
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.ruff_cache/
+.pytest_cache/
+
+# uv / mise 本地缓存
+.uv/
 
 # visual studio code
 tempCodeRunnerFile.*
 
 # screenshot
 screenshot.png
+
+# 脚本产物
+cache.txt
+
+# 编辑器/助手工作目录
+# .workbuddy/
+# AI Log Plugin 推荐忽略项
+.specstory/
+.ailog/

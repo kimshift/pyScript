@@ -1,0 +1,55 @@
+# 本仓库是「个人 Python 脚本集合」：一个 tools/<脚本名>/ 就是一个独立脚本，
+# 依赖统一在这里登记，按类别分组安装（共享一个 .venv）。
+#
+#   mise run setup          # = uv sync --extra ld，建好环境
+#   uv run --extra ld ...   # 跑雷电相关脚本
+#
+# 想加一类新脚本：在 [project.optional-dependencies] 里加一个组，
+# 例如 mytool = ["requests>=2"]，然后 uv sync --extra mytool。
+
+[project]
+name = "pyscript"
+version = "2.0.0"
+description = "个人 Python 脚本集合：雷电模拟器批量自动化等"
+requires-python = ">=3.13"
+
+# 基础依赖：几乎每个脚本都可能用到，装环境时必定安装
+dependencies = [
+    "psutil==7.2.2",
+    "pyperclip==1.11.0",
+]
+
+[project.optional-dependencies]
+# 雷电模拟器自动化（tools/ld_emulator）
+# 2026-11-05 按 docs/依赖重构清单.md 升级：移除停更的 keyboard，改用 pynput/mss
+ld = [
+    "pyautogui==0.9.54",       # 保留：点击/输入（逐渐收窄到同步器等兜底场景）
+    "mss==10.2.0",             # 截图（替代 pyautogui.screenshot）
+    "pynput==1.8.2",           # 热键监听（替代已归档的 keyboard）
+    "opencv-python==4.14.0.94",  # 停在 4.x 线，勿升 5.0
+                                # 实测 headless 版体积与 full 版几乎相同（cv2.pyd 71MB + ffmpeg 29MB 必装），
+                                # 故保留 full 版以保留 cv2.imshow 调试能力
+    "numpy==2.5.4",
+    # 必须显式声明：pyscreeze 没有在元数据里声明 Pillow（延迟导入），
+    # 一旦移除，pyautogui 的 screenshot()/locateOnScreen() 会在运行时炸。
+    # 本项目截图虽已改用 mss，但仍保留，避免留下隐藏坑。
+    "Pillow==13.0.0",
+]
+
+# 开发工具：pytest / ruff
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[tool.uv]
+# 仓库本身不作为 Python 包发布，脚本用 `python -m tools.xxx` 运行
+package = false
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["tests/legacy", "tools", ".venv"]

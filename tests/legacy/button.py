@@ -1,7 +1,11 @@
 # -*- coding: utf-8 -*-
+import os
+import sys
 import pyautogui
 import cv2
-from dictionaries import dict
+# 将仓库根目录加入模块搜索路径，以便复用 ld_emulator 的按钮映射
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+from tools.ld_emulator import data
 
 # 获取坐标
 def location(img_path):
@@ -61,7 +65,7 @@ class Buttons:
         }    
 
     def 通用(self, btn):
-        path = self.prefix + dict[btn] + ".png"
+        path = self.prefix + data.BUTTONS[btn] + ".png"
         coord = self.coord[btn]
         if coord[0] is None:
             coord = location(path)[:2]
@@ -72,7 +76,7 @@ class Buttons:
     def 全选(self, btn):
         coord = self.coord[btn]
         if coord[0] is None:
-            path = self.prefix + dict[btn] + ".png"
+            path = self.prefix + data.BUTTONS[btn] + ".png"
             coord = check_all(path)
         print(f'点击{btn}按钮:',coord)    
         auto_click(coord)

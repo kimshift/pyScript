@@ -56,11 +56,11 @@ common = {
 
 left_btn = ['全选']
 right_btn = [
-        '最小化vscode','关闭vscode','关闭同步窗口','最小化雷电多开',
+        '最小化vscode','关闭同步窗口','最小化雷电多开',
         '关闭雷电多开'
     ]
 
-dict = {
+BUTTONS = {
     'emulator': emulator,
     'common': common,
     'left_btn': left_btn,

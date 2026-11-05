@@ -6,12 +6,38 @@ import pyautogui
 import cv2
 import numpy as np
 import time
-import keyboard
 import json
 import re
 import os
-from data import dict
-pyautogui.FAILSAFE = True # 安全退出
+
+from kit.paths import tool_dir
+from tools.ld_emulator.data import BUTTONS
+from tools.ld_emulator.adapters import alert as _dialog_alert
+from tools.ld_emulator.adapters import confirm as _dialog_confirm
+from tools.ld_emulator.adapters import hotkey, screen
+
+pyautogui.FAILSAFE = True  # FAILSAFE=True: 鼠标移到屏幕左上角触发 FailSafeException, 防误触
+
+# 本工具根目录（tools/ld_emulator/）：配置、图片、产物都相对它解析，摆脱对工作目录的依赖
+PROJECT_ROOT = str(tool_dir("ld_emulator"))
+CONFIG_PATH = os.path.join(PROJECT_ROOT, 'config.json')
+
+
+def _imread(path, flags=cv2.IMREAD_GRAYSCALE):
+    """读图兼容非 ASCII 路径。
+
+    Windows 下 cv2.imread 遇到中文路径会**静默返回 None**（不抛异常），
+    最终表现为「永远找不到按钮」，极难排查。这里统一走 fromfile + imdecode。
+    """
+    try:
+        data = np.fromfile(path, dtype=np.uint8)
+        if data.size == 0:
+            print(f"图片为空或不存在: {path}")
+            return None
+        return cv2.imdecode(data, flags)
+    except Exception as exc:
+        print(f"读取图片异常: {path} -> {exc}")
+        return None
 
 # 检查是否有指定名称的进程正在运行
 def is_process_running(process_name):
@@ -21,14 +47,22 @@ def is_process_running(process_name):
     return False
 
 # 关闭指定名称的进程
-def close_running_process(process_name):
+def close_running_process(process_name, timeout=10):
     for proc in psutil.process_iter(['pid', 'name']):
         if process_name.lower() in proc.info['name'].lower():
-            proc.kill()
-    # 等待进程完全关闭
+            try:
+                proc.kill()
+            except Exception:
+                pass
+    # 等待进程完全关闭，带超时避免无限忙等
+    deadline = time.time() + timeout
     while is_process_running(process_name):
-        pass
+        if time.time() > deadline:
+            print(process_name, "-进程关闭超时")
+            return False
+        time.sleep(0.5)
     print(process_name, "-进程已关闭")
+    return True
 
 # 打开应用
 def open_app(app_path):
@@ -53,19 +87,20 @@ def restart_app(app_path,process_name):
         print(f"{process_name}-未在运行，启动中...")
         open_app(app_path)
 
-def location(img_path,position="center",width=8,height=8):
+def location(img_path, position="center", width=8, height=8, region=None):
     try:
-        # 截取当前屏幕截图
-        screenshot = pyautogui.screenshot('screenshot.png')
-        screenshot = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2GRAY)
+        # 截屏（mss 直接输出灰度图，region 可限定搜索区域以提速）
+        screenshot = screen.grab_gray(region)
 
         # 读取要查找的图片
-        template = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+        template = _imread(img_path, cv2.IMREAD_GRAYSCALE)
+        if template is None:
+            return (None, None)
         w, h = template.shape[::-1]
 
         # 使用模板匹配在屏幕上查找图片
         result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result) # max_loc:矩形左上角
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)  # max_loc:矩形左上角
         # 设置匹配阈值
         threshold = 0.8
         coord = (None, None)
@@ -85,18 +120,16 @@ def location(img_path,position="center",width=8,height=8):
         return (None, None)
     
 
-def v_location(img_path):
-    # 截取屏幕截图
-    screenshot = pyautogui.screenshot('screenshot.png')
-    screenshot = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
+def v_location(img_path, region=None):
+    # 截屏（mss 直接出灰度图）
+    screenshot_gray = screen.grab_gray(region)
 
-    # 加载模板图像
-    template = cv2.imread(img_path, cv2.IMREAD_COLOR)
+    # 加载模板图像（imdecode 兼容中文路径）
+    template = _imread(img_path, cv2.IMREAD_COLOR)
+    if template is None:
+        return (None, None)
     template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
     w, h = template_gray.shape[::-1]
-
-    # 将屏幕截图转换为灰度图
-    screenshot_gray = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
 
     # 模板匹配
     res = cv2.matchTemplate(screenshot_gray, template_gray, cv2.TM_CCOEFF_NORMED)
@@ -122,8 +155,8 @@ def v_location(img_path):
 
 # 获取横向方位
 def horizontal(btn,left_btn=None, right_btn=None,center_btn=None):
-    left_btn = left_btn if left_btn else dict['left_btn']
-    right_btn = right_btn if right_btn else dict['right_btn']
+    left_btn = left_btn if left_btn else BUTTONS['left_btn']
+    right_btn = right_btn if right_btn else BUTTONS['right_btn']
     center_btn = center_btn if center_btn else []
 
     position_map = {param: 'left' for param in left_btn} # 将左侧按钮的键值对添加到字典中
@@ -135,12 +168,11 @@ def horizontal(btn,left_btn=None, right_btn=None,center_btn=None):
 
 # 提示框
 def alert(value):
-    pyautogui.alert(str(value))
+    _dialog_alert(str(value))
 
 # 确认提示框
 def confirm(title="标题", text="内容",buttons=['取消','确认']):
-    result = pyautogui.confirm(title=title,text=text,buttons=buttons)
-    return result == buttons[1]
+    return _dialog_confirm(title=title, text=text, buttons=buttons)
 
 # 点击坐标
 def click(coord, number=1, interval=0.5):
@@ -162,8 +194,8 @@ def doubleClick(coord, interval=0.5):
     if coord[0] is None:
         print("未找到坐标=>无法点击")
         return False
-    pyautogui.moveTo(coord[0], coord[1])   
-    pyautogui.doubleClick(interval)
+    pyautogui.moveTo(coord[0], coord[1])
+    pyautogui.doubleClick(coord[0], coord[1], interval=interval)
     return True
 
 # 监听点击
@@ -175,7 +207,7 @@ def wait_click(path,config={}):
     try :
         count = 0
         while True:
-            if keyboard.is_pressed('f8'):  # 长按F8停止
+            if hotkey.should_stop():  # F8 急停
                 print("F8终止监听.")
                 break  # 跳出循环
             coord = location(path, position, width)
@@ -187,8 +219,8 @@ def wait_click(path,config={}):
                 print(f"监听点击完毕{count}次")
                 break
             sleep(interval)
-    except :
-        print('终止监听.')
+    except Exception as e:
+        print('终止监听.', e)
 
 # 长按坐标
 def long_press(coord, button='left'):
@@ -251,13 +283,35 @@ def paste(value):
 
 # 读取json文件
 def read_json(path):
-    with open(path, 'r', encoding='utf-8') as f:
-        return json.load(f)
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"配置文件不存在: {path}")
+        return {}
+    except json.JSONDecodeError as e:
+        print(f"配置文件 JSON 格式错误: {path} -> {e}")
+        return {}
+
+# 读取项目根目录下的 config.json
+def read_config():
+    return read_json(CONFIG_PATH)
 
 # 写入json文件
 def write_json(path, data):
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
+        f.write('\n')
+
+# 写入txt文件
+def write_txt(path, data, mode='w'):
+    '''
+    :param path: 文件路径
+    :param data: 写入内容
+    :param mode: w写入模式，a追加模式
+    '''
+    with open(path, mode, encoding='utf-8') as file:
+        file.write(data)
 
 # 判断是否包含中文以及中文标点符号
 def contains_chinese(text):
@@ -273,13 +327,13 @@ def open_file(path):
 
 class Buttons:
     def __init__(self, prefix=None, suffix=None):
-        config = read_json("config.json") 
-        self.root = config['image_path']
-        self.common = config['image_prefix'] # 按钮图片公共目录
-        self.prefix = prefix if prefix else self.common # 按钮图片目录前缀
-        suffix = suffix if suffix else config['image_type'] # 按钮图片后缀
-        self.suffix =f".{suffix}"
-        self.path = '' # 按钮图片路径
+        config = read_config()
+        self.root = os.path.join(PROJECT_ROOT, config['image_path'])  # 图片根目录绝对路径
+        self.common = config['image_prefix']  # 按钮图片公共目录
+        self.prefix = prefix if prefix else self.common  # 按钮图片目录前缀
+        suffix = suffix if suffix else config['image_type']  # 按钮图片后缀
+        self.suffix = f".{suffix}"
+        self.path = ''  # 按钮图片路径
         self.btn = ''  # 按钮名称
         self.coord = {
             '批量操作': (None, None),    # 操作
@@ -297,27 +351,25 @@ class Buttons:
         print("初始化Buttons类:", self.prefix)    
 
     def 通用(self, num, position):
-        coord = (None, None)
-        if self.btn in self.coord:
-            coord = self.coord[self.btn]
-            if coord[0] is None:
-                coord = location(self.path,position)[:2]
-                self.coord[self.btn] = coord
-        coord = location(self.path,position)[:2]
-        print(f'点击->{self.btn}按钮:',coord)
+        # 优先使用缓存坐标，未命中才重新定位并缓存
+        coord = self.coord.get(self.btn)
+        if not coord or coord[0] is None:
+            coord = location(self.path, position)[:2]
+            self.coord[self.btn] = coord
+        print(f'点击->{self.btn}按钮:', coord)
         return click(coord, num)
     
     def 监听点击(self, num, position):
-        config = {'position':position, 'num':num }
+        config = {'position': position, 'number': num}
         wait_click(self.path, config)
         print(f'监听->{self.btn}点击按钮完成')
 
     def default(self, btn, num, listen):
-        current_dict = dict[self.prefix]
-        if btn in dict['global']:
+        current_dict = BUTTONS[self.prefix]
+        if btn in BUTTONS['global']:
             self.btn = btn
             prefix = self.prefix if btn in current_dict else self.common
-            self.path = self.root + prefix + '/' + dict['global'][btn] + self.suffix
+            self.path = self.root + prefix + '/' + BUTTONS['global'][btn] + self.suffix
             position = horizontal(btn)
             if listen:
                return self.监听点击(num, position)
@@ -328,14 +380,14 @@ class Buttons:
     def find(self, btn, listen=False):
         try :
             coord = (None, None)
-            if btn not in dict['global']:
+            if btn not in BUTTONS['global']:
                 return coord
-            current_dict = dict[self.prefix]
+            current_dict = BUTTONS[self.prefix]
             prefix = self.prefix if btn in current_dict else self.common
-            path = self.root + prefix + '/' + dict['global'][btn] + self.suffix
+            path = self.root + prefix + '/' + BUTTONS['global'][btn] + self.suffix
             position = horizontal(btn)
             while True:
-                if keyboard.is_pressed('f8'):  # 长按F8停止
+                if hotkey.should_stop():  # F8 急停
                     print("F8终止查找.")
                     break  # 跳出循环
                 coord = location(path, position)
@@ -346,8 +398,8 @@ class Buttons:
                     break
                 sleep(1)
             return coord        
-        except :
-            print('终止查找.')
+        except Exception as e:
+            print('终止查找.', e)
             return (None, None)
 
     def click(self, btn, num=1, listen=False):

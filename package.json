@@ -1,22 +1,18 @@
 {
-  "name": "pyScript",
-  "version": "1.0.0",
-  "description": "python 脚本项目",
-  "main": "main.py",
+  "name": "pyscript",
+  "version": "2.0.0",
+  "private": true,
+  "description": "个人 Python 脚本集合",
   "scripts": {
-    "start": "python src/main.py",
-    "dev": "npm run create_ld",
-    "push": "sh script/release.sh",
-    "create_ld": "python src/emulator.py create",
-    "serve_ld": "python src/emulator.py start"
+    "setup": "mise run setup",
+    "create_ld": "mise run ld:create",
+    "serve_ld": "mise run ld:start",
+    "create_txt": "mise run ld:create-txt",
+    "backup": "mise run ld:backup",
+    "restore": "mise run ld:restore",
+    "push": "mise run release"
   },
-  "keywords": [],
+  "keywords": ["雷电模拟器", "自动化", "pyautogui", "opencv"],
   "author": "琴时",
-  "license": "ISC",
-  "packages": {
-    "subprocess": "pip install subprocess",
-    "pyautogui": "pip install pyautogui",
-    "cv2": "pip install opencv-python",
-    "pyperclip": "pip install pyperclip"
-  }
+  "license": "ISC"
 }

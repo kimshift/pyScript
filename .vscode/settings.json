@@ -1,12 +1,14 @@
 {
-  "cSpell.words": ["psutil", "pyautogui", "pyperclip"],
+  "cSpell.words": ["psutil", "pyautogui", "pyperclip", "pynput"],
   "editor.formatOnSave": false,
   "editor.defaultFormatter": "ms-python.black-formatter",
-  "terminal.integrated.defaultProfile.windows": "Command Prompt", //默认终端
+  "terminal.integrated.defaultProfile.windows": "Command Prompt",
+  // 所有脚本共用一个 .venv（由 mise run setup 创建）
+  "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+  "python.terminal.activateEnvironment": true,
   "code-runner.runInTerminal": true,
-  // 指定解释器
+  // 用 .venv 解释器跑当前文件；跨目录导入请改用 `mise run <task>`
   "code-runner.executorMap": {
-    "python": "python"
-    // "python": "python $fullFileName && del $dir\"tempCodeRunnerFile.py\""
+    "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
   }
 }

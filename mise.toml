@@ -1,0 +1,78 @@
+# mise 统一管理「运行时 + 命令入口」
+# 运行时：mise install 按下面固定版本装好 python / uv
+# 入口：  mise run <task>，不再依赖 npm scripts
+
+[tools]
+python = "3.13"
+uv = "latest"
+
+[env]
+# 统一 UTF-8 输出，避免日志/管道里中文乱码
+PYTHONUTF8 = "1"
+# 国内网络：uv 直连 pypi.org 实测超时，走清华镜像。
+# 换回官方源就把下面这行删掉（或改成 https://pypi.org/simple）
+UV_DEFAULT_INDEX = "https://pypi.tuna.tsinghua.edu.cn/simple"
+
+# ---------- 环境 ----------
+
+[tasks.setup]
+description = "创建 .venv 并安装当前脚本所需依赖（= uv sync --extra ld）"
+run = "uv sync --extra ld"
+
+# ---------- 雷电模拟器（tools/ld_emulator） ----------
+
+[tasks."ld:create"]
+description = "批量创建模拟器：创建 → 配置 → 启动 → 装包 → 同步 → 权限"
+run = "uv run --extra ld python -m tools.ld_emulator create"
+
+[tasks."ld:start"]
+description = "启动已存在的模拟器（按 ID 范围）"
+run = "uv run --extra ld python -m tools.ld_emulator start"
+
+[tasks."ld:create-txt"]
+description = "按配置生成 cache.txt"
+run = "uv run --extra ld python -m tools.ld_emulator create_txt"
+
+[tasks."ld:backup"]
+description = "按 ID 范围备份模拟器"
+run = "uv run --extra ld python -m tools.ld_emulator backup"
+
+[tasks."ld:restore"]
+description = "按 ID 范围还原模拟器"
+run = "uv run --extra ld python -m tools.ld_emulator restore"
+
+[tasks."ld:check"]
+description = "自检：加载依赖与配置，不做任何鼠标点击"
+run = "uv run --extra ld python -m tools.ld_emulator default"
+
+[tasks."ld:info"]
+description = "列出全部模拟器实例（index/状态/分辨率/标题，只读）"
+run = "uv run --extra ld python -m tools.ld_emulator info"
+
+[tasks."ld:quit-all"]
+description = "关闭全部模拟器（ldconsole quitall）"
+run = "uv run --extra ld python -m tools.ld_emulator quitall"
+
+[tasks."ld:gui"]
+description = "强制走旧 GUI 流程（回滚用），默认 create_con"
+run = "uv run --extra ld python -m tools.ld_emulator create_con --backend gui"
+
+# ---------- 质量 ----------
+
+[tasks.dev]
+description = "安装开发依赖（pytest / ruff）"
+run = "uv sync --extra ld --extra dev"
+
+[tasks.lint]
+description = "静态检查"
+run = "uv run --extra dev ruff check kit tools"
+
+[tasks.test]
+description = "跑 pytest"
+run = "uv run --extra dev --extra ld pytest -q"
+
+# ---------- 发布 ----------
+
+[tasks.release]
+description = "提交并推送到 gitee / github"
+run = "sh script/release.sh"

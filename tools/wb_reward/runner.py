@@ -42,6 +42,7 @@ from pathlib import Path
 
 from kit.config import expand_path, load_config as load_json_config
 from kit.paths import config_path, log_dir
+from tools.wb_reward import ACTIONS
 
 # ---------- 退出码语义 ----------
 EXIT_OK = 0            # 成功
@@ -58,14 +59,6 @@ EXIT_TEXT = {
     EXIT_TIMEOUT: "超时",
     EXIT_IO: "IO 错误",
     EXIT_LOCKED: "已跳过（有实例在运行）",
-}
-
-ACTION_TEXT = {
-    "all": "签到 + 旅行",
-    "checkin": "签到",
-    "travel": "旅行",
-    "status": "状态查询",
-    "health": "登录态检查",
 }
 
 # 日志统一放仓库根目录 logs/<工具名>/，配置统一放仓库根 config/<工具名>.json
@@ -509,7 +502,7 @@ def run(argv: list[str]) -> int:
     if action == "growth":
         action_text = f"成长计划（{args[1] if len(args) > 1 else 'status'}）"
     else:
-        action_text = ACTION_TEXT.get(action, action)
+        action_text = ACTIONS.get(action, action)
 
     scripts = skill_scripts_dir()
     if scripts is None:

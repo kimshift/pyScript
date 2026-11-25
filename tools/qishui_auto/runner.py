@@ -64,6 +64,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-clicks", type=int, help="点够多少次自动停（0=不限）")
     parser.add_argument("--mute", action="store_true", help="本次运行静音（退出恢复）")
     parser.add_argument("--no-uia", action="store_true", help="关闭 uiautomator 兜底通道")
+    parser.add_argument("--pair", metavar="IP:PORT", help="wifi 动作：配对端口（手机「无线调试」里显示的）")
+    parser.add_argument("--code", help="wifi 动作：6 位配对码（不给就交互输入）")
+    parser.add_argument("--host", metavar="IP:PORT", help="wifi 动作：连接端口，通常 5555")
     return parser
 
 
@@ -71,6 +74,11 @@ def apply_overrides(settings: Settings, args: argparse.Namespace) -> Settings:
     """命令行优先于配置文件。"""
     if args.serial:
         settings.serial = args.serial
+    elif args.action in ("run", "check") and not settings.serial:
+        # 配过无线调试就直接用记下的地址，省得每次带 --serial
+        wifi_host = str(_local_get(local_config_path(CONFIG_FILE), "wifi_host") or "").strip()
+        if wifi_host:
+            settings.serial = wifi_host
     if args.adb_path:
         settings.adb_path = args.adb_path
     if args.dry_run:
@@ -150,7 +158,7 @@ class Runner:
                 else:
                     self.idle += 1
                     if self.idle % self.s.idle_report_every == 0:
-                        log.info("· 等待中…（%d 轮未发现可点按钮）", self.idle)
+                        log.info("- 等待中…（%d 轮未发现可点按钮）", self.idle)
                     time.sleep(self.s.poll_interval)
         except KeyboardInterrupt:
             log.info("已手动停止（Ctrl+C）")
@@ -623,6 +631,184 @@ def _print_problems(problems: list[str]) -> None:
 # ------------------------- 入口 -------------------------
 
 
+def action_wifi(settings: Settings, host: str | None = None, pair: str | None = None, code: str | None = None) -> int:
+    """无线调试：配对 / 连接手机，之后跑脚本不用插数据线。
+
+    三种用法（都不需要改其他代码，连上后序列号就是 `IP:端口`）：
+
+        wifi                          # 用上次记下的地址重连（没有就提示怎么配）
+        wifi --pair 192.168.1.23:41234  # 首次：配对端口，会提示输入 6 位配对码
+        wifi --host 192.168.1.23:5555   # 直接连指定的连接端口
+
+    配对端口和连接端口不是同一个：配对用手机「无线调试」页面上那个 IP:端口，
+    连接端口一般是 5555（Android 11+ 也可以在配对后用 mDNS 自动发现，但本机
+    mdns 不可用，所以这里一律要求显式地址）。
+    """
+    adb = Adb(settings.adb_path, settings.serial)
+    if not adb.available:
+        print("未找到 adb：请安装 platform-tools，或在 config/qishui.local.json 里填 adb_path")
+        return EXIT_RUNTIME
+
+    local_file = local_config_path(CONFIG_FILE)
+
+    # 1) 配对（仅 Android 11+ 首次需要）
+    if pair:
+        if not code:
+            code = _ask("请输入手机显示的 6 位配对码：")
+        ok, out = adb.pair(pair, code)
+        print(("[OK] " if ok else "[X] ") + (out or "配对无输出"))
+        if not ok:
+            print("\n配对失败常见原因：")
+            print("  - 配对端口用错了（是「无线调试」弹窗里那个端口，不是 5555）")
+            print("  - 配对码已过期（关掉无线调试再打开会刷新，10 分钟内有效）")
+            print("  - 手机和电脑不在同一个网络")
+            return EXIT_RUNTIME
+        return _after_pair(adb, pair, local_file, host)
+
+    # 2) 连接
+    host = host or str(_local_get(local_file, "wifi_host") or "").strip()
+    if not host:
+        return _wifi_guide(adb)
+
+    ok, out = adb.connect(host)
+    print(("[OK] " if ok else "[X] ") + (out or "connect 无输出"))
+    if not ok:
+        print(f"\n连不上 {host}。按顺序排查：\n")
+        if "拒绝" in out or "refused" in out.lower():
+            print("  [!] 是「连接被拒绝」，不是网络不通 —— 说明那个端口上没程序在监听。")
+            print("      最常见原因：端口填错了。Android 11+ 请用「无线调试」页面")
+            print("      下方那个端口，而不是 5555：")
+            print("         mise run qs:wifi -- --host <手机页面上显示的 IP:端口>")
+        print("  - 手机的「无线调试」开着，屏幕别锁")
+        print("  - IP 或端口变了（重启无线调试/换网络都会变）→ 重新看手机页面")
+        print("  - 电脑和手机在不同网段时，确认路由允许互访（ping 得通才可能连上）")
+        print("  - Android 10 及以下：需要先 USB 执行 adb tcpip 5555，且手机重启后要重做")
+        return EXIT_RUNTIME
+
+    # 3) 记到 local 配置，下次 wifi 不用再输
+    _local_set(local_file, "wifi_host", host)
+    print(f"已记到 {local_file.name}：wifi_host = {host}（下次直接 mise run qs:wifi）")
+
+    # 4) 顺便确认设备真的能用
+    probe = Adb(settings.adb_path, host)
+    size = probe.screen_size()
+    if size[0]:
+        print(f"[OK] 设备可用：{host}，分辨率 {size[0]}x{size[1]}")
+    else:
+        print(f"[!] 连接上了但读不到分辨率，稍等几秒重试或跑 check --serial {host}")
+
+    print(f"\n接下来：mise run qs:run -- --serial {host}")
+    return EXIT_OK
+
+
+def _after_pair(adb: Adb, pair: str, local_file, host: str | None) -> int:
+    """配对成功后找连接端口。
+
+    踩过的坑：Android 11+ 配对成功**不代表 5555 在监听**。无线调试给的连接端口
+    是页面下方那个随机端口，5555 是 Android 10 及以下 `adb tcpip 5555` 的做法。
+    所以这里不猜 5555，而是依次尝试候选端口，并给出明确指引。
+    """
+    ip = pair.rsplit(":", 1)[0]
+    if host:
+        candidates = [host]
+    else:
+        # 先试常见端口，再试配对端口（少数机型配对后复用同一个）
+        candidates = [f"{ip}:5555", f"{ip}:{pair.rsplit(':', 1)[1]}"]
+
+    print("\n配对成功。正在找连接端口……")
+    for cand in candidates:
+        ok, out = adb.connect(cand)
+        if ok:
+            print(f"[OK] {out}")
+            _local_set(local_file, "wifi_host", cand)
+            print(f"已记到 {local_file.name}：wifi_host = {cand}")
+            print("\n接下来：mise run qs:run")
+            return EXIT_OK
+
+    print(f"[X] 试过 {', '.join(candidates)}，都连不上。")
+    print(
+        "\n这是 Android 11+ 的常见情况：**配对成功不等于 5555 在监听**。\n"
+        "请回到手机的「无线调试」页面（不是配对弹窗），看页面下方那行：\n"
+        "\n"
+        f"    IP 地址和端口    {ip}:XXXXX\n"
+        "\n"
+        "那个端口才是连接用的，把它填进来：\n"
+        f"\n    mise run qs:wifi -- --host {ip}:XXXXX\n"
+        "\n"
+        "说明：\n"
+        "  - 配对端口（弹窗里的）和连接端口（页面下方的）是两个不同的端口\n"
+        "  - 5555 只有 Android 10 及以下用 adb tcpip 5555 时才会开\n"
+        "  - 页面上的连接端口在重启「无线调试」后可能变化，以当场显示为准"
+    )
+    return EXIT_RUNTIME
+
+
+def _ask(prompt: str) -> str:
+    try:
+        return input(prompt).strip()
+    except (EOFError, KeyboardInterrupt):
+        return ""
+
+
+def _local_get(path, key: str):
+    from kit.config import read_json
+
+    return (read_json(path, default={}) or {}).get(key)
+
+
+def _local_set(path, key: str, value) -> None:
+    """只改 local 里的这一个键，路径等其它私有值原样保留。"""
+    from kit.config import read_json, write_json
+
+    data = read_json(path, default={}) or {}
+    data[key] = value
+    write_json(path, data)
+
+
+def _wifi_guide(adb: Adb | None = None) -> int:
+    """没有可用地址时的引导。手机插着线的话顺便把它的 IP 读出来，省得用户去翻设置。"""
+    print("还没有无线调试地址。首次使用按下面做一遍：\n")
+    print("  1. 手机 → 设置 → 开发者选项 → 打开「无线调试」")
+    print("     - Android 11+ 有这个开关，全程不用插线")
+    print("     - Android 10 及以下没有，需要先插线执行一次 adb tcpip 5555")
+    print("  2. 点「使用配对码配对设备」，手机上会弹出一个窗口：")
+    print("       ┌──────────────────────────────┐")
+    print("       │ 配对码        123456          │  <- 6 位数字，输入到电脑")
+    print("       │ IP 地址和端口  192.168.x.x:3xxxx │  <- 【配对端口】，给 --pair")
+    print("       └──────────────────────────────┘")
+    print("     配对成功后，还要看【配对弹窗外面】页面上那行 IP 地址和端口：")
+    print("       192.168.x.x:5xxxx   <- 这才是【连接端口】，给 --host")
+    print("     两个端口不一样！5555 只有 Android 10 及以下 adb tcpip 才会开。")
+
+    ip = _guess_phone_ip(adb)
+    if ip:
+        print(f"\n  检测到当前插着的手机 IP 大概是 {ip}，配对时端口还要看手机弹窗：")
+        print(f"       mise run qs:wifi -- --pair {ip}:<手机弹窗里的端口>")
+    else:
+        print("\n  3. 回来执行（把端口换成手机上显示的那个）：")
+        print("       mise run qs:wifi -- --pair 192.168.x.x:<手机弹窗里的端口>")
+
+    print("\n配对只做一次；之后手机连上同一 Wi-Fi 就执行 mise run qs:wifi 即可。")
+    return EXIT_RUNTIME
+
+
+def _guess_phone_ip(adb: Adb | None) -> str | None:
+    """手机插着 USB 时读它的 Wi-Fi IP；没有真机或读不到返回 None。
+
+    只在引导文案里用一次：让用户少去设置里翻 IP。读不到不算错。
+    """
+    if adb is None or not adb.available:
+        return None
+    online = [s for s, state in adb.devices() if state == "device"]
+    # 排除模拟器（它的 IP 是本机回环，对配对没用）
+    phones = [s for s in online if not s.startswith("emulator-")]
+    if len(phones) != 1:
+        return None
+    probe = Adb(adb.exe, phones[0])
+    ip = probe.device_ip()
+    return ip if ip and not ip.startswith("127.") else None
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(sys.argv[1:] if argv is None else list(argv))
     try:
@@ -637,6 +823,8 @@ def main(argv: list[str] | None = None) -> int:
         return action_devices(settings)
     if args.action == "check":
         return action_check(settings)
+    if args.action == "wifi":
+        return action_wifi(settings, host=args.host, pair=args.pair, code=args.code)
     return Runner(settings).run()
 
 

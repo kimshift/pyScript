@@ -101,6 +101,10 @@ run = "uv run --extra ocr python -m tools.qishui_auto check"
 description = "列出 adb 在线设备（只读）"
 run = "uv run --extra ocr python -m tools.qishui_auto devices"
 
+[tasks."qs:wifi"]
+description = "无线调试：连手机，之后不用插数据线（首次加 --pair IP:端口）"
+run = "uv run --extra ocr python -m tools.qishui_auto wifi"
+
 [tasks."qs:setup"]
 description = "只装汽水看广告所需依赖（= uv sync --extra ocr）"
 run = "uv sync --extra ocr"

@@ -25,6 +25,11 @@ from kit.config import expand_path
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
+
+def _is_network_serial(serial: str) -> bool:
+    """是不是 TCP/IP 形式（IP:端口）的序列号；真机和 emulator-xxxx 都算否。"""
+    return bool(re.fullmatch(r"[\w.\-]+:\d{2,5}", serial or ""))
+
 # 雷电自带 adb 的常见位置（用户装了雷电就无需手动配 adb_path）
 _LDPLAYER_GLOBS = (
     "D:/leidian/*/adb.exe",
@@ -137,6 +142,11 @@ class Adb:
                 return want, ""
             if state:
                 return None, f"设备 {want} 状态为 {state}（unauthorized 请在手机上点「允许调试」）"
+            # 无线地址不在线时自动重连一次：Wi-Fi 断过 / 手机休眠都可能掉连接，
+            # 每次都让用户手动 adb connect 太烦。
+            if _is_network_serial(want) and self.connect(want)[0]:
+                self.serial = want
+                return want, ""
             return None, f"未找到设备 {want}；当前在线：{online or '无'}"
 
         if not online:
@@ -198,6 +208,50 @@ class Adb:
         out = self.run(["shell", "cmd", "media_session", "volume", "--stream", "3", "--get"], timeout=10) or ""
         match = re.search(r"volume is (\d+)", out)
         return int(match.group(1)) if match else None
+
+    # ---------- 无线调试 ----------
+    # Android 11+ 走「无线调试」：pair（配对码）→ connect（连接端口），两个端口不同。
+    # Android 10 及以下没有配对流程，只能先 USB 执行 tcpip 再 connect。
+
+    def pair(self, host_port: str, code: str) -> tuple[bool, str]:
+        """用配对码与手机配对。返回 (成功, 原始输出)。"""
+        out = self.run(["pair", host_port, code], timeout=30) or ""
+        return "Successfully paired" in out, out.strip()
+
+    def connect(self, host_port: str) -> tuple[bool, str]:
+        """连接到 TCP/IP 设备。返回 (成功, 原始输出)。
+
+        注意 adb 的坑：连不上时也可能返回 rc=0，只有输出文本能判断成败，
+        所以这里必须看 `connected to` / `already connected` 关键字。
+        """
+        out = self.run(["connect", host_port], timeout=20) or ""
+        ok = "connected to" in out or "already connected" in out
+        return ok, out.strip()
+
+    def disconnect(self, host_port: str | None = None) -> str:
+        args = ["disconnect"] + ([host_port] if host_port else [])
+        return (self.run(args, timeout=15) or "").strip()
+
+    def tcpip(self, port: int = 5555) -> tuple[bool, str]:
+        """让设备在指定端口监听（Android 10 及以下需要，重启后失效）。"""
+        out = self.run(["tcpip", str(port)], timeout=20) or ""
+        return "restarting in TCP mode" in out, out.strip()
+
+    def device_ip(self) -> str | None:
+        """读设备自己的 Wi-Fi IP（优先 wlan0）。
+
+        比让用户去设置里翻 IP 省事；读不到就返回 None，由调用方提示手填。
+        """
+        out = self.run(["shell", "ip", "-f", "inet", "addr", "show", "wlan0"], timeout=10) or ""
+        match = re.search(r"inet\s+(\d+\.\d+\.\d+\.\d+)", out)
+        if match:
+            return match.group(1)
+        # 兜底：部分机型 wlan0 名字不同，扫全部地址但要排除回环
+        out = self.run(["shell", "ip", "-f", "inet", "addr"], timeout=10) or ""
+        for hit in re.findall(r"inet\s+(\d+\.\d+\.\d+\.\d+)", out):
+            if not hit.startswith("127."):
+                return hit
+        return None
 
     def toggle_mute(self) -> bool:
         """KEYCODE_VOLUME_MUTE：在原音量与 0 之间切换（本机唯一可用的静音方式）。"""

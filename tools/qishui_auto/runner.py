@@ -124,6 +124,7 @@ class Runner:
         self.escapes = 0
         self._saver: threading.Thread | None = None
         self._debug_written = 0
+        self._overlay_closed: dict[str, float] = {}
 
     # ---------- 对外 ----------
 
@@ -240,27 +241,11 @@ class Runner:
                     self.size = (width, height)  # 以真实截图为准，避免 wm size 与实际不一致
                     self.frames += 1
                     nodes = self.ocr.nodes(screen, self._scan_crop())
-                    decision = decide(
-                        nodes,
-                        width,
-                        height,
-                        self.s.rules,
-                        self.s.cancel_word,
-                        self.s.live_keyword,
-                        self.s.fuzzy,
-                    )
+                    decision = self._decide(nodes, width, height)
                     # 裁剪区里没有、整屏里可能有的按钮：空转久了补一次整屏
                     if decision is None and self._scan_crop() is not None and self._full_scan_due():
                         nodes = self.ocr.nodes(screen)
-                        decision = decide(
-                            nodes,
-                            width,
-                            height,
-                            self.s.rules,
-                            self.s.cancel_word,
-                            self.s.live_keyword,
-                            self.s.fuzzy,
-                        )
+                        decision = self._decide(nodes, width, height)
                     # 整个界面都认不出任何可点文字时，先怀疑是误入直播间（那里只有聊天和商品）
                     if decision is None and self._maybe_escape_live(nodes):
                         return True
@@ -269,11 +254,42 @@ class Runner:
             nodes = self.uia.nodes()
             if nodes:
                 width, height = self.size
-                decision = decide(nodes, width, height, self.s.rules, self.s.cancel_word, self.s.live_keyword, self.s.fuzzy)
+                decision = self._decide(nodes, width, height)
                 if decision is not None:
                     source = "uia"
 
         return self._act(decision, screen, source)
+
+    def _decide(self, nodes, width: int, height: int):
+        """统一入口：扫规则 + 覆盖层弹窗，并给覆盖层加冷却。
+
+        覆盖层是按坐标点的（点的是圆形 X），如果它没消失，下一帧又会命中同一条
+        决策；冷却期内直接返回 None，让主循环正常空转，而不是连点同一个坐标。
+        """
+        decision = decide(
+            nodes,
+            width,
+            height,
+            self.s.rules,
+            self.s.cancel_word,
+            self.s.live_keyword,
+            self.s.fuzzy,
+            self.s.overlays,
+        )
+        if decision is None or decision.action != "overlay":
+            return decision
+        now = time.time()
+        cooldown = self._overlay_cooldown(decision.target)
+        if now - self._overlay_closed.get(decision.target, 0.0) < cooldown:
+            return None
+        self._overlay_closed[decision.target] = now
+        return decision
+
+    def _overlay_cooldown(self, name: str) -> float:
+        for overlay in self.s.overlays:
+            if overlay.name == name:
+                return overlay.cooldown
+        return 5.0
 
     def _scan_crop(self) -> tuple[float, float] | None:
         """本帧要识别的纵向区域（None = 整屏）。"""
@@ -428,20 +444,24 @@ class Runner:
 
         中间弹窗（领取奖励 / 继续观看）是「点了就消失」的一次性按钮，用更短的
         窗口 `modal_dedupe`：既挡住同一帧的重复命中，又不会因为窗口太长而卡着不动。
+        覆盖层关闭也按一次性按钮处理（关闭 X 就在那一点）。
         """
         last = self.last_click
         if decision.target != last["target"]:
             return False
         near = abs(decision.x - last["x"]) < 20 and abs(decision.y - last["y"]) < 20
-        window = self.s.modal_dedupe if decision.action == "reward" else self.s.dedupe_seconds
+        if decision.action in ("reward", "overlay"):
+            window = self.s.modal_dedupe
+        else:
+            window = self.s.dedupe_seconds
         return near and (time.time() - last["ts"]) < window
 
     def _limit_reached(self) -> bool:
         return bool(self.s.max_clicks) and sum(self.stats.values()) >= self.s.max_clicks
 
     def _cooldown(self) -> float:
-        """点完等多久：中间弹窗消失得很快，用短冷却；其它按钮留一点缓冲。"""
-        if self.last_action in ("reward",):
+        """点完等多久：中间弹窗与覆盖层关闭都是「点了就消失」，用短冷却。"""
+        if self.last_action in ("reward", "overlay"):
             return self.s.modal_cooldown
         return self.s.click_cooldown
 
@@ -572,7 +592,16 @@ def action_check(settings: Settings) -> int:
     for node in nodes[:12]:
         print(f"      「{node.label}」@({node.cx},{node.cy}) 置信度 {node.score:.2f}")
 
-    decision = decide(nodes, width, height, settings.rules, settings.cancel_word, settings.live_keyword, settings.fuzzy)
+    decision = decide(
+        nodes,
+        width,
+        height,
+        settings.rules,
+        settings.cancel_word,
+        settings.live_keyword,
+        settings.fuzzy,
+        settings.overlays,
+    )
     if decision:
         print(f"[→] 当前屏幕会点：{decision.target}「{decision.label}」@({decision.x},{decision.y}){decision.reason}")
     else:

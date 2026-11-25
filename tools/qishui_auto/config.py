@@ -15,7 +15,7 @@ from pathlib import Path
 
 from kit.config import load_config as load_json_config
 from kit.paths import config_path, log_dir
-from tools.qishui_auto.match import Rule
+from tools.qishui_auto.match import Overlay, Rule
 
 TOOL_NAME = "qishui"
 CONFIG_FILE = config_path(TOOL_NAME)
@@ -87,6 +87,20 @@ DEFAULTS: dict = {
         "wait": 1.0,  # 退出动作后等界面切换
         "cooldown": 3.0,  # 两次自救之间的最小间隔
     },
+    # ---------- 覆盖层弹窗（纯图片、按钮无文字） ----------
+    # 这类弹窗唯一的文字按钮是「点击使用」，点进去会跳商品页；真正的关闭是个
+    # 没有文字的圆形 X，OCR 认不出来，只能按相对坐标点。
+    "overlays": [
+        {
+            "name": "优惠券",
+            "enabled": True,
+            "hints": ["天降福利", "点击使用", "满减券"],  # 命中 need 个就认为它在
+            "need": 2,
+            "close_x": 0.50,  # 卡片下方圆形 X
+            "close_y": 0.83,
+            "cooldown": 5.0,
+        },
+    ],
     # ---------- 行为 ----------
     "mute_on_start": False,  # 广告期间静音（退出恢复）
     "dry_run": False,  # 只识别不点击，安全试跑
@@ -134,6 +148,7 @@ class Settings:
     live_keyword: str = "进入直播间"
     center_targets: list[str] = field(default_factory=list)
     roi: dict = field(default_factory=dict)
+    overlays: list[Overlay] = field(default_factory=list)
 
     ocr_min_score: float = 0.5
     ocr_max_width: int = 720
@@ -223,6 +238,33 @@ def _uia_mode(value) -> str:
     return text if text in ("auto", "on", "off") else "auto"
 
 
+def _overlays(items) -> list[Overlay]:
+    """把配置里的 overlays 列表转成 Overlay；缺名字/坐标的条目直接跳过（配错别崩）。"""
+    out: list[Overlay] = []
+    for item in items or []:
+        if not isinstance(item, dict) or not item.get("enabled", True):
+            continue
+        name = str(item.get("name") or "").strip()
+        hints = tuple(str(h).strip() for h in (item.get("hints") or []) if str(h).strip())
+        if not name or not hints:
+            continue
+        try:
+            close_x = min(1.0, max(0.0, _number(item.get("close_x"), 0.5)))
+            close_y = min(1.0, max(0.0, _number(item.get("close_y"), 0.83)))
+        except (TypeError, ValueError):
+            continue
+        out.append(
+            Overlay(
+                name=name,
+                hints=hints,
+                close=(close_x, close_y),
+                need=max(1, int(_number(item.get("need"), 2))),
+                cooldown=max(0.0, _number(item.get("cooldown"), 5.0)),
+            )
+        )
+    return out
+
+
 def _scan_range(top, bottom) -> tuple[float, float]:
     """归一化 OCR 扫描区域：夹到 0~1，且保证 top < bottom（写反了就自动换回来）。"""
     t = min(1.0, max(0.0, _number(top, 0.0)))
@@ -258,6 +300,7 @@ def from_dict(cfg: dict) -> Settings:
         live_keyword=str(targets.get("live_enter_keyword") or "进入直播间"),
         center_targets=list(merged.get("center_targets") or []),
         roi=dict(merged.get("roi") or {}),
+        overlays=_overlays(merged.get("overlays")),
         ocr_min_score=_number(ocr.get("min_score"), 0.5),
         ocr_max_width=max_width,
         ocr_use_cls=bool(ocr.get("use_cls", False)),

@@ -218,6 +218,44 @@ def test_debug_save_failure_never_breaks_loop(monkeypatch, tmp_path):
     instance._flush_debug()  # 线程里的异常不外溢
 
 
+# ------------------------- 覆盖层弹窗（优惠券） -------------------------
+
+
+OVERLAY = Decision("overlay", "优惠券", "（关闭按钮）", 540, 1992, "弹出优惠券，按坐标关闭")
+
+
+def test_overlay_close_is_clicked(monkeypatch):
+    instance = make_runner(monkeypatch, decision=OVERLAY)
+    assert instance._step() is True
+    assert instance.adb.taps == [(540, 1992)]
+    assert instance.stats["overlay"] == 1
+
+
+def test_overlay_close_has_cooldown(monkeypatch):
+    """关闭按钮没生效时别连点同一坐标，冷却期内安静空转。"""
+    instance = make_runner(
+        monkeypatch,
+        decision=OVERLAY,
+        overlays=[{"name": "优惠券", "hints": ["天降福利"], "cooldown": 30}],
+        timing={"modal_dedupe": 0, "poll_interval": 0.01, "click_cooldown": 0.01},
+    )
+    assert instance._step() is True
+    assert instance._step() is False  # 冷却内不再点
+    assert len(instance.adb.taps) == 1
+
+
+def test_overlay_close_retries_after_cooldown(monkeypatch):
+    instance = make_runner(
+        monkeypatch,
+        decision=OVERLAY,
+        overlays=[{"name": "优惠券", "hints": ["天降福利"], "cooldown": 0}],
+        timing={"modal_dedupe": 0, "poll_interval": 0.01, "click_cooldown": 0.01},
+    )
+    instance._step()
+    assert instance._step() is True
+    assert len(instance.adb.taps) == 2
+
+
 
 # ------------------------- 中间弹窗节奏 -------------------------
 

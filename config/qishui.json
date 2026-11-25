@@ -103,6 +103,21 @@
         "wait": 1.0,
         "cooldown": 3.0
     },
+    "overlays": [
+        {
+            "name": "优惠券",
+            "enabled": true,
+            "hints": [
+                "天降福利",
+                "点击使用",
+                "满减券"
+            ],
+            "need": 2,
+            "close_x": 0.5,
+            "close_y": 0.83,
+            "cooldown": 5.0
+        }
+    ],
     "mute_on_start": false,
     "dry_run": false,
     "max_clicks": 0,

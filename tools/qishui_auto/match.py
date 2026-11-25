@@ -82,6 +82,21 @@ class Decision:
     reason: str = ""
 
 
+@dataclass(frozen=True)
+class Overlay:
+    """一个「靠文案识别、用固定坐标关闭」的覆盖层弹窗。
+
+    优惠券这类弹窗是纯图片，唯一的文字按钮「点击使用」点进去会跳商品页；
+    真正的关闭是个没有文字的圆形 X，OCR 认不出来，只能按相对坐标点。
+    """
+
+    name: str  # 统计与日志用的名字，如「优惠券」
+    hints: tuple[str, ...]  # 画面特征文案，命中 need 个就认为该弹窗在
+    close: tuple[float, float]  # 关闭按钮的相对坐标 (x, y)，0~1
+    need: int = 2  # 需要命中几个特征文案
+    cooldown: float = 5.0  # 两次关闭之间的最小间隔，防止连点
+
+
 # ------------------------- 文字归一化 / 匹配 -------------------------
 
 
@@ -136,6 +151,20 @@ def in_roi(node: Node, screen_w: int, screen_h: int, roi: dict | None) -> bool:
 
 
 # ------------------------- 决策 -------------------------
+
+
+def overlay_hints(nodes: list[Node], hints: list[str], need: int = 2) -> bool:
+    """屏幕上命中 `need` 个以上「某类弹窗特征文案」时，认为它正挡在中间。
+
+    优惠券弹窗（`看了5秒，天降福利` + `点击使用`）这类是纯图片覆盖层，
+    上面唯一的按钮是「点击使用」，点进去会跳商品页；真正的关闭是个没有文字的
+    圆形 X，OCR 认不出来。所以要靠文案识别出「是这种弹窗」，再用固定坐标关。
+    """
+    if not nodes or not hints:
+        return False
+    blob = "".join(normalize_text(n.label) for n in nodes)
+    hits = sum(1 for hint in hints if (norm := normalize_text(hint)) and norm in blob)
+    return hits >= need
 
 
 def live_room_hints(nodes: list[Node], hints: list[str]) -> bool:
@@ -217,6 +246,28 @@ def find_live_enter_cancel(
     return None
 
 
+def find_overlay(nodes: list[Node], overlays: list[Overlay], screen_w: int, screen_h: int) -> Decision | None:
+    """认出挡在中间的覆盖层弹窗，返回点它关闭按钮的决策。
+
+    放在领奖规则**之后**、位置兜底**之前**：弹窗上如果还有「领取奖励」这类
+    真按钮，应该先点它；只有当规则全都扫不到时，才认定这是纯图片弹窗、按坐标关。
+    """
+    if not nodes or not overlays or not screen_w or not screen_h:
+        return None
+    for overlay in overlays:
+        if not overlay_visible(nodes, overlay):
+            continue
+        x = int(screen_w * overlay.close[0])
+        y = int(screen_h * overlay.close[1])
+        return Decision("overlay", overlay.name, "（关闭按钮）", x, y, f"弹出{overlay.name}，按坐标关闭")
+    return None
+
+
+def overlay_visible(nodes: list[Node], overlay: Overlay) -> bool:
+    """这个覆盖层弹窗是否正显示在屏幕上。"""
+    return overlay_hints(nodes, list(overlay.hints), overlay.need)
+
+
 def decide(
     nodes: list[Node],
     screen_w: int,
@@ -225,11 +276,13 @@ def decide(
     cancel_word: str = "取消",
     live_keyword: str = "进入直播间",
     fuzzy: bool = True,
+    overlays: list[Overlay] | None = None,
 ) -> Decision | None:
     """按规则优先级返回第一个可点目标；没有可点的返回 None。
 
-    两段式：先只认「真的读到取消」，再去扫领奖/关闭/跳过，最后才用位置猜取消。
-    这样既保证「取消」永远压过领奖，又不会在屏幕上明明有「领取奖励」时瞎点位置。
+    优先级：读到的取消 → 领奖/关闭/跳过 → 覆盖层弹窗关闭 → 位置猜取消。
+    覆盖层放在规则之后：像优惠券弹窗那种纯图片才需要按坐标点，
+    屏幕上若有真按钮（领取奖励等）就该先点它。
     """
     if not nodes:
         return None
@@ -253,5 +306,10 @@ def decide(
             best = max(cands, key=lambda n: (n.cx, -n.cy))  # 越靠右、越靠上优先
         return Decision(rule.action, rule.target, best.label, best.cx, best.cy)
 
-    # 什么都没扫到，才退回位置兜底（此时哪怕点歪也好过被带进直播间卡死）
+    # 规则全落空：先看是不是被某个纯图片弹窗挡住了（优惠券之类）
+    overlay = find_overlay(nodes, overlays or [], screen_w, screen_h)
+    if overlay:
+        return overlay
+
+    # 最后才退回位置兜底（此时哪怕点歪也好过被带进直播间卡死）
     return find_live_enter_cancel(nodes, cancel_word, live_keyword, fuzzy, screen_w, screen_h, positional=True)

@@ -9,10 +9,13 @@ from tools.qishui_auto.config import from_dict
 from tools.qishui_auto.match import (
     Decision,
     Node,
+    Overlay,
     Rule,
     decide,
     in_roi,
+    live_room_hints,
     normalize_text,
+    overlay_hints,
     text_match,
 )
 
@@ -262,3 +265,57 @@ def test_rules_carry_roi_and_center():
 def test_rule_defaults_are_permissive():
     decision = decide([node("领取奖励", 540, 1200)], W, H, [Rule("reward", "领取奖励", None, True)])
     assert decision.target == "领取奖励"
+
+
+# ------------------------- 覆盖层弹窗（优惠券之类） -------------------------
+
+
+def coupon_nodes():
+    """真机布局：橙色优惠券卡片，唯一文字按钮是「点击使用」，关闭是无字圆形 X。"""
+    return [
+        node("看了5秒，天降福利", 230, 177),
+        node("恭喜获得满减券", 230, 418),
+        node("46.01", 214, 508),
+        node("点击使用", 230, 723),
+        node("满92元可用", 230, 580),
+    ]
+
+
+def coupon_overlay():
+    return Overlay("优惠券", ("天降福利", "点击使用", "满减券"), (0.5, 0.83), need=2, cooldown=5.0)
+
+
+def test_overlay_closes_by_coordinate():
+    decision = decide(coupon_nodes(), W, H, rules(), overlays=[coupon_overlay()])
+    assert decision.action == "overlay"
+    assert decision.target == "优惠券"
+    assert (decision.x, decision.y) == (int(W * 0.5), int(H * 0.83))
+
+
+def test_overlay_not_triggered_by_single_hint():
+    nodes = [node("点击使用", 230, 723)]
+    assert decide(nodes, W, H, rules(), overlays=[coupon_overlay()]) is None
+
+
+def test_overlay_does_not_steal_real_button():
+    """弹窗上若还有「领取奖励」这种真按钮，应先点它，不要按坐标乱点。"""
+    nodes = coupon_nodes() + [node("领取奖励", 540, 1500)]
+    decision = decide(nodes, W, H, rules(), overlays=[coupon_overlay()])
+    assert decision.action == "reward"
+    assert decision.target == "领取奖励"
+
+
+def test_overlay_disabled_by_config():
+    settings = from_dict({"overlays": [{"name": "优惠券", "hints": ["天降福利"], "enabled": False}]})
+    assert settings.overlays == []
+
+
+def test_overlay_without_hints_is_skipped():
+    """配错（没写 hints）时静默跳过，别让主循环崩掉。"""
+    settings = from_dict({"overlays": [{"name": "空", "hints": []}]})
+    assert settings.overlays == []
+
+
+def test_overlay_coordinates_are_clamped():
+    settings = from_dict({"overlays": [{"name": "越界", "hints": ["天降福利"], "close_x": 3.0, "close_y": -1.0}]})
+    assert settings.overlays[0].close == (1.0, 0.0)

@@ -16,8 +16,8 @@ UV_DEFAULT_INDEX = "https://pypi.tuna.tsinghua.edu.cn/simple"
 # ---------- 环境 ----------
 
 [tasks.setup]
-description = "创建 .venv 并安装当前脚本所需依赖（= uv sync --extra ld）"
-run = "uv sync --extra ld"
+description = "创建 .venv 并安装当前脚本所需依赖（= uv sync --extra ld --extra ocr）"
+run = "uv sync --extra ld --extra ocr"
 
 # ---------- 雷电模拟器（tools/ld_emulator） ----------
 
@@ -83,6 +83,28 @@ run = "uv run python -m tools.wb_reward health"
 description = "只读探活"
 run = "uv run python -m tools.wb_reward status"
 
+# ---------- 汽水音乐自动看广告（tools/qishui_auto） ----------
+
+[tasks."qs:run"]
+description = "开始自动看广告（Ctrl+C 停止）"
+run = "uv run --extra ocr python -m tools.qishui_auto run"
+
+[tasks."qs:dry"]
+description = "试跑：只识别不点击，先看它会点哪儿"
+run = "uv run --extra ocr python -m tools.qishui_auto run --dry-run"
+
+[tasks."qs:check"]
+description = "自检：adb / 设备 / 分辨率 / OCR / 当前屏幕能识别到什么（不点击）"
+run = "uv run --extra ocr python -m tools.qishui_auto check"
+
+[tasks."qs:devices"]
+description = "列出 adb 在线设备（只读）"
+run = "uv run --extra ocr python -m tools.qishui_auto devices"
+
+[tasks."qs:setup"]
+description = "只装汽水看广告所需依赖（= uv sync --extra ocr）"
+run = "uv sync --extra ocr"
+
 # ---------- 质量 ----------
 [tasks.dev]
 description = "安装开发依赖（pytest / ruff）"
@@ -94,7 +116,7 @@ run = "uv run --extra dev ruff check kit tools"
 
 [tasks.test]
 description = "跑 pytest"
-run = "uv run --extra dev --extra ld pytest -q"
+run = "uv run --extra dev --extra ld --extra ocr pytest -q"
 
 # ---------- 发布 ----------
 

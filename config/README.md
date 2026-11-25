@@ -38,6 +38,8 @@ mise run ld:check
 | `ld_emulator.local.example.json` | ✅ | 上者的模板，新机器复制后改名 |
 | `wb_reward.json` | ✅ | 积分签到的超时/重试/日志上限；`skill_scripts` 留空即按用户目录自动探测 |
 | `wb_reward.local.json` | ❌ | 需要覆盖解释器或 skill 路径时再建 |
+| `qishui.json` | ✅ | 汽水看广告的按钮文案 / ROI / 轮询节奏 / dry-run 开关 |
+| `qishui.local.json` | ❌ | 本机 adb 路径（`adb_path`）与设备序列号（`serial`）；不填则自动探测 |
 
 > **运行状态也写进 `.local.json`。** 例如 `emulator_end_id`（已经创建到第几个模拟器）
 > 由程序自己回写，只落本机；公共配置里保持 0 作为「从第一个开始」的起点。

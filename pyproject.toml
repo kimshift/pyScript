@@ -36,6 +36,14 @@ ld = [
     "Pillow==13.0.0",
 ]
 
+# 屏幕 OCR：tools/qishui_auto（汽水音乐自动看广告）
+# 依赖与 ld 组有重合（cv2/numpy），但显式声明，保证 `uv run --extra ocr` 单独可用
+ocr = [
+    "opencv-python==4.14.0.94",
+    "numpy==2.5.4",
+    "rapidocr-onnxruntime==1.4.4",  # 自带模型；依赖 onnxruntime 1.32（由它传递引入）
+]
+
 # 开发工具：pytest / ruff
 dev = [
     "pytest>=8.0",
@@ -50,6 +58,12 @@ package = false
 line-length = 120
 target-version = "py313"
 
+[tool.ruff.lint]
+# 全仓库每个文件都带 `# -*- coding: utf-8 -*-`（约定风格），UP009 只会制造噪音
+ignore = ["UP009"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 norecursedirs = ["tests/legacy", "tools", ".venv"]
+# 从仓库根导入 tools.* / kit.*（pytest 默认只把测试目录加进 sys.path）
+pythonpath = ["."]

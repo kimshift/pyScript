@@ -1,7 +1,7 @@
 # pyScript —— 个人 Python 脚本集合
 
 > 一个仓库放多个互不干扰的 Python 脚本：共享一套运行时与命令入口，各自独立的代码、依赖分组、配置和资源。
-> 目前包含：**雷电模拟器（LDPlayer）批量自动化**。
+> 目前包含：**雷电模拟器（LDPlayer）批量自动化**、**WorkBuddy 积分签到**、**汽水音乐自动看广告**。
 
 ---
 
@@ -9,7 +9,7 @@
 
 ```sh
 mise install          # 按 mise.toml 装好 python 3.13 + uv
-mise run setup        # 创建 .venv 并安装依赖（= uv sync --extra ld）
+mise run setup        # 创建 .venv 并安装依赖（= uv sync --extra ld --extra ocr）
 mise run ld:check     # 自检：加载依赖与配置，不做任何点击
 ```
 
@@ -65,10 +65,18 @@ pyScript/
 │   └── wb_reward/          WorkBuddy 积分签到（计划任务驱动）
 │       ├── __main__.py     入口：python -m tools.wb_reward <动作>
 │       └── runner.py       调用 workbuddy-reward-helper，含重试/互斥/日志轮转
+│   └── qishui_auto/        汽水音乐自动看广告（adb 截图 + OCR 点击）
+│       ├── __main__.py     入口：python -m tools.qishui_auto <动作>
+│       ├── runner.py       主循环：截图 → OCR → 决策 → 点击
+│       ├── adb.py          adb 封装（截图 / 点击 / 分辨率 / 音量）
+│       ├── ocr.py          RapidOCR 主通道
+│       ├── uia.py          uiautomator 兜底通道（默认自动探测，多数设备不可用）
+│       └── match.py        文字匹配与点击优先级（纯函数，可单测）
 ├── config/                 所有脚本的配置集中在这里（详见 config/README.md）
 │   ├── README.md           新电脑怎么配（先看这个）
 │   ├── ld_emulator.json    雷电自动化的公共配置
-│   └── wb_reward.json      积分签到的超时/重试/日志上限
+│   ├── wb_reward.json      积分签到的超时/重试/日志上限
+│   ├── qishui.json         汽水看广告的目标文案 / ROI / 节奏
 │   └── *.local.json        本机私有覆盖（gitignore 忽略，不入库）
 ├── logs/                   所有脚本的运行日志，按脚本名分子目录（不入库）
 │   └── wb_reward/          scheduler.log（执行过程）+ result.log（结果摘要）
@@ -186,6 +194,30 @@ python scripts/new_tool.py my_tool     # 生成 tools/my_tool/ 骨架
 | `mise run wb:status` | 只读探活 |
 
 10 个时间点（健康 07:45；签到 09:00/13:00/20:00；旅行 08:15/12:30/16:45/21:00；成长 10:00/19:30）由 [`script/setup_wb_tasks.ps1`](script/setup_wb_tasks.ps1) 注册，动作指向 `.venv\Scripts\pythonw.exe -m tools.wb_reward <动作>`，无控制台窗口。
+
+---
+
+## 汽水音乐自动看广告（tools/qishui_auto）
+
+手机开 USB 调试连电脑、保持亮屏停在看广告页面，脚本按 **截图 + OCR** 识别界面并替你点
+「领取奖励 / 领取成功 × / 跳过 / 取消」。纯 UI 自动化：不改 App、不伪造进度、不加速播放。
+细节见 [`tools/qishui_auto/README.md`](tools/qishui_auto/README.md)。
+
+| 命令 | 说明 |
+|---|---|
+| `mise run qs:setup` | 首次：装 OCR 依赖（opencv / numpy / rapidocr） |
+| `mise run qs:check` | 自检：adb / 设备 / 分辨率 / OCR / 当前屏幕识别到什么（**不点击**） |
+| `mise run qs:dry` | 试跑：只识别不点击，先确认「它会点哪儿」 |
+| `mise run qs:run` | 正式跑；`Ctrl + C` 停止（会恢复音量） |
+| `mise run qs:devices` | 列出 adb 在线设备（只读） |
+
+底层写法：`uv run --extra ocr python -m tools.qishui_auto [run|check|devices]`，支持
+`--serial` / `--dry-run` / `--max-clicks N` / `--mute` / `--no-uia` / `--adb <路径>`。
+Windows 双击：`script/汽水看广告.bat`。
+
+点击优先级：**取消（拦截进入直播间）> 领取奖励/继续观看 > 领取成功 ×/退出不看了 > 跳过**。
+文案随 App 版本会变，改 `config/qishui.json` 即可；本机 adb 路径与设备序列号写
+`config/qishui.local.json`（已 gitignore）。
 
 ## 文档
 

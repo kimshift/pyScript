@@ -1,0 +1,80 @@
+{
+    "adb_path": "",
+    "serial": "",
+    "channels": {
+        "ocr": true,
+        "uiautomator": "auto"
+    },
+    "ocr": {
+        "min_score": 0.5,
+        "max_width": 720,
+        "use_cls": false,
+        "fuzzy": true
+    },
+    "targets": {
+        "reward": [
+            "领取奖励",
+            "继续观看"
+        ],
+        "close": [
+            "领取成功",
+            "退出不看了"
+        ],
+        "skip": [
+            "跳过广告",
+            "跳过",
+            "关闭广告"
+        ],
+        "cancel": "取消",
+        "live_enter_keyword": "进入直播间"
+    },
+    "enable_skip": true,
+    "center_targets": [
+        "领取奖励",
+        "继续观看"
+    ],
+    "roi": {
+        "领取奖励": {
+            "x": [0.2, 0.8],
+            "y": [0.3, 0.78]
+        },
+        "继续观看": {
+            "x": [0.2, 0.8],
+            "y": [0.3, 0.78]
+        },
+        "领取成功": {
+            "x": [0.55, 1.0],
+            "y": [0.0, 0.2]
+        },
+        "退出不看了": {
+            "x": [0.0, 1.0],
+            "y": [0.8, 1.0]
+        },
+        "跳过广告": {
+            "x": [0.55, 1.0],
+            "y": [0.0, 0.2]
+        },
+        "跳过": {
+            "x": [0.55, 1.0],
+            "y": [0.0, 0.2]
+        },
+        "关闭广告": {
+            "x": [0.55, 1.0],
+            "y": [0.0, 0.2]
+        }
+    },
+    "timing": {
+        "poll_interval": 0.1,
+        "click_cooldown": 0.4,
+        "dedupe_seconds": 3.0,
+        "uia_timeout": 4,
+        "uia_max_fail": 3,
+        "idle_report_every": 10
+    },
+    "mute_on_start": false,
+    "dry_run": false,
+    "max_clicks": 0,
+    "debug": {
+        "save_click_images": true
+    }
+}

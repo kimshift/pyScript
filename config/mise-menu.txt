@@ -1,0 +1,41 @@
+# mise 菜单配置 —— `npm start` 按这个文件决定显示哪些任务
+#
+#   名字                 → 菜单里显示、可执行
+#   # 名字               → 菜单里隐藏（记录仍保留在本文件，想恢复就把行首的 # 删掉）
+#   # [组名]             → 分组标题，本文件里的先后顺序就是菜单顺序
+#   名字  # 说明         → 末尾说明只供阅读，不参与解析
+#
+# mise.toml 里新增的 task 会被自动补到这里；删掉本文件会按 mise.toml 重新生成。
+
+# [通用]
+# dev            # 安装开发依赖（pytest / ruff）
+# lint           # 静态检查
+# release        # 提交并推送到 gitee / github
+# setup          # 创建 .venv 并安装当前脚本所需依赖（= uv sync --extra ld --extra ocr）
+# test           # 跑 pytest
+
+# [ld]
+# ld:backup      # 按 ID 范围备份模拟器
+# ld:check       # 自检：加载依赖与配置，不做任何鼠标点击
+# ld:create      # 批量创建模拟器：创建 → 配置 → 启动 → 装包 → 同步 → 权限
+# ld:create-txt  # 按配置生成 cache.txt
+# ld:gui         # 强制走旧 GUI 流程（回滚用），默认 create_con
+# ld:info        # 列出全部模拟器实例（index/状态/分辨率/标题，只读）
+# ld:quit-all    # 关闭全部模拟器（ldconsole quitall）
+# ld:restore     # 按 ID 范围还原模拟器
+# ld:start       # 启动已存在的模拟器（按 ID 范围）
+
+# [qs]
+qs:run         # 开始自动看广告（Ctrl+C 停止）
+# qs:check       # 自检：adb / 设备 / 分辨率 / OCR / 当前屏幕能识别到什么（不点击）
+# qs:devices     # 列出 adb 在线设备（只读）
+# qs:dry         # 试跑：只识别不点击，先看它会点哪儿
+# qs:setup       # 只装汽水看广告所需依赖（= uv sync --extra ocr）
+
+# [wb]
+wb:all         # 签到 + 旅行（默认动作）
+# wb:checkin     # 只执行签到
+# wb:growth      # 成长计划：有可领档位才领取
+# wb:health      # 登录态健康检查（token 有效期 + 只读探活）
+# wb:status      # 只读探活
+# wb:travel      # 只执行旅行计划

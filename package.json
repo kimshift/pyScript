@@ -4,6 +4,8 @@
   "private": true,
   "description": "个人 Python 脚本集合",
   "scripts": {
+    "start": "node script/mise-menu.js",
+    "menu": "node script/mise-menu.js",
     "setup": "mise run setup",
     "create_ld": "mise run ld:create",
     "serve_ld": "mise run ld:start",

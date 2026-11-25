@@ -13,6 +13,33 @@ mise run setup        # 创建 .venv 并安装依赖（= uv sync --extra ld --ex
 mise run ld:check     # 自检：加载依赖与配置，不做任何点击
 ```
 
+### 交互式选任务：`npm start`
+
+记不住 task 名时，直接 `npm start`：脚本会在终端按 `ld` / `qs` / `wb` 分组列出任务让你选。
+
+```sh
+npm start               # ↑/↓ 移动，Enter 执行，直接打字过滤，Esc 退出
+npm start -- ld:check    # 不想进菜单：直接跑某个 task（等价 mise run ld:check）
+npm start -- --list      # 只打印任务清单
+npm start -- --config    # 打印菜单配置文件路径
+```
+
+菜单内容由 **`config/mise-menu.txt`** 决定（首次运行自动生成，把所有 task 收录进去）：
+
+```txt
+# [ld]
+ld:backup      # 按 ID 范围备份模拟器
+ld:check       # 自检：加载依赖与配置，不做任何鼠标点击
+# ld:info      # ← 行首加 # 就不再出现在菜单里（记录仍保留）
+```
+
+- 想隐藏某个任务：在那一行行首加 `# `
+- 想调整顺序：直接挪动行或整段的位置
+- `mise.toml` 里新增的 task 会自动追加到配置文件末尾对应的分组；删掉该文件会重新生成
+- 直接用 `npm start -- <task>` 执行不受隐藏影响，只要 `mise.toml` 里有这个 task 就能跑
+
+> 实现见 `script/mise-menu.js`（只用 Node 内置模块，无需 `npm install`）。
+
 > 环境由 [mise](https://mise.jdx.dev/) 管理（固定 Python 3.13），依赖由 [uv](https://docs.astral.sh/uv/) 管理（`pyproject.toml` + `uv.lock`）。
 > 不再需要手动 `pip install`，也不再依赖系统里的全局 Python。
 

@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import threading
 import time
 from collections import Counter
 
@@ -27,8 +28,8 @@ from tools.qishui_auto import ACTION_TEXT, ACTIONS
 from tools.qishui_auto.adb import Adb
 from tools.qishui_auto.config import CONFIG_FILE, Settings
 from tools.qishui_auto.config import load as load_settings
-from tools.qishui_auto.match import Decision, decide
-from tools.qishui_auto.ocr import OcrEngine, decode_png, save_debug
+from tools.qishui_auto.match import Decision, decide, live_room_hints
+from tools.qishui_auto.ocr import OcrEngine, clear_debug_images, decode_png, save_debug, trim_debug_images
 from tools.qishui_auto.uia import UiaChannel
 
 EXIT_OK = 0
@@ -115,7 +116,14 @@ class Runner:
         self.muted = False
         self.saved_volume: int | None = None
         self.last_click = {"target": "", "x": -1, "y": -1, "ts": 0.0}
+        self.last_action = ""
         self._started = 0.0
+        self._last_uia = 0.0
+        self._last_escape = 0.0
+        self._stuck = {"target": "", "count": 0}
+        self.escapes = 0
+        self._saver: threading.Thread | None = None
+        self._debug_written = 0
 
     # ---------- 对外 ----------
 
@@ -127,6 +135,7 @@ class Runner:
 
         self.size = self.adb.screen_size()
         self._banner(serial)
+        self._prepare_debug_dir()
         if not self._channels_ready():
             return EXIT_RUNTIME
 
@@ -136,7 +145,7 @@ class Runner:
             while not self._limit_reached():
                 if self._step():
                     self.idle = 0
-                    time.sleep(self.s.click_cooldown)
+                    time.sleep(self._cooldown())
                 else:
                     self.idle += 1
                     if self.idle % self.s.idle_report_every == 0:
@@ -145,6 +154,7 @@ class Runner:
         except KeyboardInterrupt:
             log.info("已手动停止（Ctrl+C）")
         finally:
+            self._flush_debug()
             self._unmute()
             self._summary()
         return EXIT_OK
@@ -161,8 +171,35 @@ class Runner:
             self.s.skip_targets if self.s.enable_skip else "已禁用",
         )
         log.info("通道：OCR%s ｜ uiautomator=%s ｜ 停止按 Ctrl+C", "" if self.s.use_ocr else "（关闭）", self.s.uia_mode)
+        log.info("误入直播间自救：%s", "开启（返回键 + 右上角关闭）" if self.s.live_escape else "关闭")
         if self.s.dry_run:
             log.info("dry-run：只识别不点击")
+
+    # ---------- 调试图清理 ----------
+
+    def _prepare_debug_dir(self) -> None:
+        """开跑前清空上一轮的标注截图，避免一张 1~4MB 的图越攒越多。"""
+        if not self.s.save_click_images or self.s.dry_run:
+            return
+        if self.s.clear_on_start:
+            try:
+                clear_debug_images(self.s.debug_dir, self.s.keep_files, log.info)
+            except OSError as exc:  # 清理失败不该拦住主流程
+                log.warning("清理调试图失败（继续运行）：%s", exc)
+
+    def _trim_debug_if_needed(self) -> None:
+        """每写 `debug_trim_every` 张图检查一次目录总量，超了删最旧的。
+
+        在后台写线程里调用，所以按「已写张数」节流，不去读主线程的 self.seq。
+        """
+        if not self.s.save_click_images or self.s.dry_run or self.s.max_total_mb <= 0:
+            return
+        if self._debug_written % self.s.debug_trim_every:
+            return
+        try:
+            trim_debug_images(self.s.debug_dir, self.s.max_total_mb, log.info)
+        except OSError as exc:
+            log.warning("清理调试图失败（继续运行）：%s", exc)
 
     def _channels_ready(self) -> bool:
         ok, why = OcrEngine.deps_status()
@@ -202,8 +239,9 @@ class Runner:
                     height, width = screen.shape[:2]
                     self.size = (width, height)  # 以真实截图为准，避免 wm size 与实际不一致
                     self.frames += 1
+                    nodes = self.ocr.nodes(screen, self._scan_crop())
                     decision = decide(
-                        self.ocr.nodes(screen),
+                        nodes,
                         width,
                         height,
                         self.s.rules,
@@ -211,8 +249,23 @@ class Runner:
                         self.s.live_keyword,
                         self.s.fuzzy,
                     )
+                    # 裁剪区里没有、整屏里可能有的按钮：空转久了补一次整屏
+                    if decision is None and self._scan_crop() is not None and self._full_scan_due():
+                        nodes = self.ocr.nodes(screen)
+                        decision = decide(
+                            nodes,
+                            width,
+                            height,
+                            self.s.rules,
+                            self.s.cancel_word,
+                            self.s.live_keyword,
+                            self.s.fuzzy,
+                        )
+                    # 整个界面都认不出任何可点文字时，先怀疑是误入直播间（那里只有聊天和商品）
+                    if decision is None and self._maybe_escape_live(nodes):
+                        return True
 
-        if decision is None and self.uia.usable:
+        if decision is None and self._uia_turn():
             nodes = self.uia.nodes()
             if nodes:
                 width, height = self.size
@@ -221,6 +274,92 @@ class Runner:
                     source = "uia"
 
         return self._act(decision, screen, source)
+
+    def _scan_crop(self) -> tuple[float, float] | None:
+        """本帧要识别的纵向区域（None = 整屏）。"""
+        return self.s.ocr_crop
+
+    def _full_scan_due(self) -> bool:
+        """空转够久就补一次整屏识别，兜住只出现在最底部的按钮。
+
+        平时裁掉底部是在省时间；但「退出不看了」这类按钮长在 y>0.9 的地方，
+        一帧都不看就会漏。用空转次数节流，正常推进时永远不走这条路。
+        """
+        after = self.s.ocr_full_scan_after_idle
+        if not after:
+            return False
+        return self.idle > 0 and self.idle % after == 0
+
+    def _uia_turn(self) -> bool:
+        """uiautomator 只在「连续空转多轮」后偶尔试一次。
+
+        它一次能卡 4~11s（视频广告永远等不到 idle），放在每轮里会把节奏拖垮，
+        这也是原先「卡一下」的来源之一。所以设两道闸：空转次数 + 时间间隔。
+        """
+        if not self.uia.usable:
+            return False
+        if self.idle < self.s.uia_after_idle:
+            return False
+        now = time.time()
+        if now - self._last_uia < self.s.uia_interval:
+            return False
+        self._last_uia = now
+        return True
+
+    # ---------- 误入直播间自救 ----------
+    def _maybe_escape_live(self, nodes) -> bool:
+        """认不出任何目标时，判断是不是被带进了直播间；是就退出来。
+
+        判定要两条都成立才动手，避免把「广告加载中」误当成直播间：
+        1. 画面特征命中 ≥2 个（更多直播 / 人气榜 / 说点什么 …）；
+        2. 前台 Activity 含直播间关键字（dumpsys，一次约 0.25s）。
+        """
+        if not self.s.live_escape or not nodes:
+            return False
+        if not live_room_hints(nodes, self.s.live_hints):
+            return False
+        now = time.time()
+        if now - self._last_escape < self.s.live_cooldown:
+            return False
+        focus = self.adb.current_focus()
+        if focus and not any(key in focus for key in self.s.live_activity_keys):
+            return False  # 有前台信息但不像直播间 -> 不动手
+        self._last_escape = now
+        self._escape_live(focus)
+        return True
+
+    def _escape_live(self, focus: str) -> None:
+        """退出直播间：先按返回键（一次就够），不行再点右上角 X。"""
+        self.escapes += 1
+        self.idle = 0
+        self.last_action = "escape"
+        log.warning("检测到误入直播间（%s），自动退出", focus or "画面特征")
+
+        if self.s.dry_run:
+            log.info("[dry-run] 会按返回键退出直播间")
+            return
+
+        for attempt in range(1, self.s.live_back_max + 1):
+            self.adb.back()
+            time.sleep(self.s.live_wait)
+            if not self._still_live():
+                log.info("已退出直播间（返回键第 %d 次）", attempt)
+                return
+
+        width, height = self.size
+        if width and height:
+            x, y = int(width * self.s.live_close_x), int(height * self.s.live_close_y)
+            log.info("返回键无效，改点右上角关闭 @(%d,%d)", x, y)
+            self.adb.tap(x, y)
+            time.sleep(self.s.live_wait)
+            if not self._still_live():
+                log.info("已退出直播间（点击关闭）")
+                return
+        log.warning("仍未能退出直播间：可能被要求留在直播间看完，稍后重试")
+
+    def _still_live(self) -> bool:
+        focus = self.adb.current_focus()
+        return bool(focus) and any(key in focus for key in self.s.live_activity_keys)
 
     def _act(self, decision: Decision | None, screen, source: str) -> bool:
         if decision is None:
@@ -231,6 +370,8 @@ class Runner:
         self.seq += 1
         self.stats[decision.action] += 1
         self.last_click.update(target=decision.target, x=decision.x, y=decision.y, ts=time.time())
+        self.last_action = decision.action
+        self._note_progress(decision)
 
         extra = f"（{decision.reason}）" if decision.reason else ""
         if self.s.dry_run:
@@ -241,19 +382,68 @@ class Runner:
                 log.warning("点击命令执行失败（%s @%d,%d）", decision.target, decision.x, decision.y)
 
         if self.s.save_click_images and not self.s.dry_run:
-            save_debug(screen, decision.label, decision.x, decision.y, self.s.debug_dir, self.seq, decision.action)
+            self._save_debug_async(screen, decision)
         return True
 
+    def _save_debug_async(self, screen, decision: Decision) -> None:
+        """调试图放到后台线程写：encode+落盘约 0.17s，卡在点击后就是白等一帧。
+
+        截图本身是 numpy 数组，点击后主循环不再改它，直接交给线程是安全的。
+        同一时间只跑一个写线程，避免慢磁盘上堆积十几个线程。
+        """
+        if self._saver is not None and self._saver.is_alive():
+            return
+        args = (screen, decision.label, decision.x, decision.y, self.s.debug_dir, self.seq, decision.action)
+        self._saver = threading.Thread(target=self._write_debug, args=args, daemon=True)
+        self._saver.start()
+
+    def _write_debug(self, *args) -> None:
+        try:
+            save_debug(*args)
+            self._debug_written += 1
+            self._trim_debug_if_needed()
+        except Exception as exc:  # noqa: BLE001 - 存图只是辅助，绝不能影响主流程
+            log.debug("调试图写入失败：%s", exc)
+
+    def _flush_debug(self) -> None:
+        """退出前等最后一张图写完（daemon 线程会被直接掐断）。"""
+        saver = self._saver
+        if saver is not None and saver.is_alive():
+            saver.join(timeout=3.0)
+
+    def _note_progress(self, decision: Decision) -> None:
+        """同一个按钮连着点很多次还不换画面，就提示一下（真卡住时便于发现）。"""
+        stuck = self._stuck
+        if decision.target == stuck["target"]:
+            stuck["count"] += 1
+        else:
+            stuck["target"], stuck["count"] = decision.target, 1
+        if stuck["count"] == self.s.stuck_repeat:
+            log.info("「%s」已经连点 %d 次，界面没变化，先等一会儿", decision.target, stuck["count"])
+            stuck["count"] = 0
+            time.sleep(self.s.click_cooldown * 3)
+
     def _duplicate(self, decision: Decision) -> bool:
-        """同一目标、同一位置、冷却时间内的重复命中一律忽略（防止连点）。"""
+        """同一目标、同一位置、冷却时间内的重复命中一律忽略（防止连点）。
+
+        中间弹窗（领取奖励 / 继续观看）是「点了就消失」的一次性按钮，用更短的
+        窗口 `modal_dedupe`：既挡住同一帧的重复命中，又不会因为窗口太长而卡着不动。
+        """
         last = self.last_click
         if decision.target != last["target"]:
             return False
         near = abs(decision.x - last["x"]) < 20 and abs(decision.y - last["y"]) < 20
-        return near and (time.time() - last["ts"]) < self.s.dedupe_seconds
+        window = self.s.modal_dedupe if decision.action == "reward" else self.s.dedupe_seconds
+        return near and (time.time() - last["ts"]) < window
 
     def _limit_reached(self) -> bool:
         return bool(self.s.max_clicks) and sum(self.stats.values()) >= self.s.max_clicks
+
+    def _cooldown(self) -> float:
+        """点完等多久：中间弹窗消失得很快，用短冷却；其它按钮留一点缓冲。"""
+        if self.last_action in ("reward",):
+            return self.s.modal_cooldown
+        return self.s.click_cooldown
 
     # ---------- 音量 ----------
 
@@ -290,12 +480,14 @@ class Runner:
         elapsed = time.time() - self._started if self._started else 0.0
         total = sum(self.stats.values())
         detail = "｜".join(f"{name} {count} 次" for name, count in self.stats.items()) or "无点击"
+        escaped = f"，退出直播间 {self.escapes} 次" if self.escapes else ""
         log.info(
-            "本次结束：%d 次点击（%s），识别 %d 帧，耗时 %.0fs%s",
+            "本次结束：%d 次点击（%s），识别 %d 帧，耗时 %.0fs%s%s",
             total,
             detail,
             self.frames,
             elapsed,
+            escaped,
             "，dry-run 未真正点击" if self.s.dry_run else "",
         )
 

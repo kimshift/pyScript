@@ -105,3 +105,38 @@ def test_live_enter_countdown_is_cancelled(engine):
 
 def test_empty_screen_has_no_decision(engine):
     assert click(engine.nodes(render([("正在播放", (400, 1200), 48)]))) is None
+
+
+def test_crop_keeps_absolute_coordinates(engine):
+    """裁剪后坐标必须还原成整屏坐标，否则会点错位置。"""
+    image = render([("领取奖励", (390, 1440), 66)])
+    full = engine.nodes(image)
+    cut = engine.nodes(image, (0.0, 0.9))
+    full_node = next(n for n in full if "领取奖励" in n.label)
+    cut_node = next(n for n in cut if "领取奖励" in n.label)
+    assert abs(cut_node.cx - full_node.cx) <= 12
+    assert abs(cut_node.cy - full_node.cy) <= 12
+
+
+def test_crop_excludes_band_below_limit(engine):
+    """裁剪区（scan_bottom）以下的文字不该被识别，这正是省时间的来源。"""
+    image = render([("商品福利区文字", (400, 2100), 56)])
+    assert any("商品" in n.label for n in engine.nodes(image))
+    cut = engine.nodes(image, (0.0, 0.85))
+    assert not any("商品" in n.label for n in cut)
+
+
+def test_crop_result_matches_full_screen_decision(engine):
+    """真实布局：裁剪后仍应点同一个按钮。"""
+    image = render(
+        [
+            ("15秒后可领取奖励", (300, 120), 46),
+            ("完成互动，领取奖励福利", (330, 1360), 52),
+            ("继续互动", (588, 1596), 66),
+            ("坚持退出", (604, 1798), 44),
+        ]
+    )
+    full_decision = click(engine.nodes(image))
+    cut_decision = click(engine.nodes(image, (0.0, 0.9)))
+    assert full_decision is not None and cut_decision is not None
+    assert full_decision.target == cut_decision.target == "继续互动"

@@ -9,12 +9,16 @@
         "min_score": 0.5,
         "max_width": 720,
         "use_cls": false,
-        "fuzzy": true
+        "fuzzy": true,
+        "scan_top": 0.0,
+        "scan_bottom": 0.9,
+        "full_scan_after_idle": 6
     },
     "targets": {
         "reward": [
             "领取奖励",
-            "继续观看"
+            "继续观看",
+            "继续互动"
         ],
         "close": [
             "领取成功",
@@ -31,7 +35,8 @@
     "enable_skip": true,
     "center_targets": [
         "领取奖励",
-        "继续观看"
+        "继续观看",
+        "继续互动"
     ],
     "roi": {
         "领取奖励": {
@@ -41,6 +46,10 @@
         "继续观看": {
             "x": [0.2, 0.8],
             "y": [0.3, 0.78]
+        },
+        "继续互动": {
+            "x": [0.2, 0.8],
+            "y": [0.25, 0.78]
         },
         "领取成功": {
             "x": [0.55, 1.0],
@@ -64,17 +73,44 @@
         }
     },
     "timing": {
-        "poll_interval": 0.1,
-        "click_cooldown": 0.4,
-        "dedupe_seconds": 3.0,
+        "poll_interval": 0.05,
+        "click_cooldown": 0.2,
+        "modal_cooldown": 0.0,
+        "modal_dedupe": 0.5,
+        "dedupe_seconds": 2.0,
+        "stuck_repeat": 3,
         "uia_timeout": 4,
         "uia_max_fail": 3,
+        "uia_after_idle": 4,
+        "uia_interval": 10.0,
         "idle_report_every": 10
+    },
+    "live_room": {
+        "escape": true,
+        "hints": [
+            "更多直播",
+            "人气榜",
+            "说点什么",
+            "本场点赞"
+        ],
+        "activity_keys": [
+            "LivePlayerActivity",
+            "com.luna.biz.live"
+        ],
+        "back_max": 2,
+        "close_x": 0.94,
+        "close_y": 0.08,
+        "wait": 1.0,
+        "cooldown": 3.0
     },
     "mute_on_start": false,
     "dry_run": false,
     "max_clicks": 0,
     "debug": {
-        "save_click_images": true
+        "save_click_images": true,
+        "clear_on_start": true,
+        "keep_files": 0,
+        "max_total_mb": 512,
+        "trim_every": 50
     }
 }

@@ -100,8 +100,13 @@ class OcrEngine:
 
     # ---------- 识别 ----------
 
-    def nodes(self, image) -> list[Node]:
-        """返回按屏幕像素坐标表示的文本节点（已过滤低置信度）。"""
+    def nodes(self, image, crop: tuple[float, float] | None = None) -> list[Node]:
+        """返回按屏幕像素坐标表示的文本节点（已过滤低置信度）。
+
+        crop=(top, bottom) 时只识别这一段纵向区域（0~1 相对坐标），坐标仍还原成
+        整屏坐标。底部商品卡/聊天区占屏幕三成，里面几十行字全都要跑识别，
+        裁掉后同样的截图 OCR 从 ~3.2s 降到 ~1.4s。默认 None = 整屏（check 用）。
+        """
         import cv2
         import numpy as np
 
@@ -109,11 +114,22 @@ class OcrEngine:
             return []
 
         height, width = image.shape[:2]
+        offset_y = 0
+        source = image
+        if crop:
+            top, bottom = (min(1.0, max(0.0, float(v))) for v in crop)
+            y1 = int(height * top)
+            y2 = int(height * bottom)
+            if y2 - y1 >= 16 and (y1 > 0 or y2 < height):  # 太小的裁剪没意义，忽略
+                source = image[y1:y2, :]
+                offset_y = y1
+
+        height, width = source.shape[:2]
         scale = 1.0
-        target = image
+        target = source
         if width > self.max_width:  # 缩到固定宽度，小字还能看清又不拖慢
             scale = self.max_width / float(width)
-            target = cv2.resize(image, (int(width * scale), int(height * scale)), interpolation=cv2.INTER_AREA)
+            target = cv2.resize(source, (int(width * scale), int(height * scale)), interpolation=cv2.INTER_AREA)
 
         self._load()
         rows = self._infer(target)
@@ -123,7 +139,7 @@ class OcrEngine:
             if not text or score < self.min_score:
                 continue
             pts = np.array(box, dtype=np.float32).reshape(-1, 2) * inv
-            xs, ys = pts[:, 0], pts[:, 1]
+            xs, ys = pts[:, 0], pts[:, 1] + offset_y
             nodes.append(
                 Node(
                     label=str(text),
@@ -186,3 +202,82 @@ def save_debug(image, node_label: str, x: int, y: int, out_dir: Path, seq: int, 
         return path
     except Exception:  # noqa: BLE001 - 调试图只是辅助，任何失败都不该打断主流程
         return None
+
+
+# ------------------------- 调试图清理 -------------------------
+# 一张标注截图 1~4MB，一小时就能攒几百 MB。规则分两层：
+# 启动时清掉上一轮（默认全清，可留最新几张），运行中再按总量上限删最旧的。
+
+_DEBUG_SUFFIXES = (".png", ".jpg", ".jpeg")
+
+
+def _debug_files(out_dir: Path) -> list[Path]:
+    """目录里的截图，按修改时间从旧到新。只认图片后缀，别误删手写的说明文件。"""
+    if not out_dir.is_dir():
+        return []
+    items = [p for p in out_dir.iterdir() if p.is_file() and p.suffix.lower() in _DEBUG_SUFFIXES]
+    return sorted(items, key=lambda p: (p.stat().st_mtime, p.name))
+
+
+def _remove(paths: list[Path], log=None) -> tuple[int, int]:
+    """删文件，返回 (删除数量, 释放字节数)。删不掉的（被查看器占用）跳过，不报错。"""
+    count = freed = 0
+    for path in paths:
+        try:
+            size = path.stat().st_size
+            path.unlink()
+            count += 1
+            freed += size
+        except OSError as exc:  # 文件被占用/权限不足：跳过，不影响主流程
+            if log:
+                log("调试图删不掉（已跳过）：%s（%s）", path.name, exc)
+    return count, freed
+
+
+def clear_debug_images(out_dir: Path, keep: int = 0, log=None) -> int:
+    """启动前清空历史调试图，返回删掉的数量。
+
+    keep>0 时保留最新的 keep 张（想留点现场排查就填几）。
+    """
+    files = _debug_files(out_dir)
+    if keep:
+        files = files[: max(0, len(files) - keep)]
+    count, freed = _remove(files, log)
+    if count and log:
+        log("已清理上次的调试图 %d 张（释放 %.1fMB）", count, freed / 1024 / 1024)
+    return count
+
+
+def trim_debug_images(out_dir: Path, max_total_mb: float, log=None) -> int:
+    """把目录总量压到 max_total_mb 以内（按修改时间删最旧的），返回删掉的数量。
+
+    按「总量」而不是「张数」限制：截图大小随画面复杂度差好几倍，
+    按张数管不住磁盘占用。
+    """
+    if max_total_mb <= 0:
+        return 0
+    limit = int(max_total_mb * 1024 * 1024)
+    files = _debug_files(out_dir)
+    sizes = {}
+    total = 0
+    for path in files:
+        try:
+            sizes[path] = path.stat().st_size
+            total += sizes[path]
+        except OSError:
+            continue
+    if total <= limit:
+        return 0
+
+    victims: list[Path] = []
+    for path in files:  # 从最旧的开始删，直到回到上限内
+        if total <= limit:
+            break
+        if path not in sizes:
+            continue
+        victims.append(path)
+        total -= sizes[path]
+    count, _ = _remove(victims, log)
+    if count and log:
+        log("调试图超过 %.0fMB，删除最旧的 %d 张", max_total_mb, count)
+    return count

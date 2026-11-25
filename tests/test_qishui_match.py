@@ -58,6 +58,16 @@ def test_match_accepts_capsule_label():
     assert text_match("领取成功，关闭，按钮", "领取成功")
 
 
+def test_match_rejects_target_buried_in_sentence():
+    """「完成互动，领取奖励福利」是标题，里面的「领取奖励」不是按钮，不能点。"""
+    assert not text_match("完成互动，领取奖励福利", "领取奖励")
+    assert not text_match("本活动领取奖励需完成3次互动", "领取奖励")
+    # 按钮文字在一头的照旧命中（OCR 把前缀/后缀读进同一段是常见的）
+    assert text_match("再领一次领取奖励", "领取奖励")
+    assert text_match("领取奖励福利将于次日发放", "领取奖励")
+    assert text_match("再看3个视频提前得第13日免费听领取奖励", "领取奖励")
+
+
 def test_match_rejects_short_false_positive():
     # 「广告」不能命中「关闭广告」：识别结果少于 3 字时不允许反向包含
     assert not text_match("广告", "关闭广告")
@@ -105,6 +115,23 @@ def test_reward_wins_over_skip():
     decision = decide(nodes, W, H, rules())
     assert decision.action == "reward"
     assert decision.target == "继续观看"
+
+
+def test_interaction_modal_clicks_button_not_title():
+    """真机布局：标题「完成互动，领取奖励福利」在上，按钮「继续互动」在下。
+
+    曾经把标题当成「领取奖励」点，导致一直卡在互动弹窗里出不来。
+    """
+    nodes = [
+        node("15秒后可领取奖励×", 1096, 215),
+        node("完成互动，领取奖励福利", 721, 1396, x1=334, x2=1108),
+        node("继续互动", 720, 1632, x1=588, x2=852),
+        node("坚持退出", 720, 1831),
+    ]
+    decision = decide(nodes, W, H, rules())
+    assert decision.action == "reward"
+    assert decision.target == "继续互动"
+    assert (decision.x, decision.y) == (720, 1632)
 
 
 def test_close_used_when_no_reward():
@@ -175,12 +202,54 @@ def test_cancel_has_top_priority():
     assert decide(nodes, W, H, rules()).action == "cancel"
 
 
+def test_cancel_by_position_does_not_steal_reward():
+    """倒计时胶囊在、但取消没读出来时，该点「领取奖励」而不是瞎猜位置。"""
+    nodes = [
+        node("6s后进入直播间", 628, 2221, x1=388, x2=868),
+        node("领取奖励", 720, 1400),
+    ]
+    decision = decide(nodes, W, H, rules())
+    assert decision.action == "reward"
+    assert decision.target == "领取奖励"
+
+
+def test_cancel_found_right_of_countdown_when_ocr_misreads():
+    """OCR 常把「取消」读成「肖」这类单字，靠「倒计时右侧最右短文本」兜底。"""
+    nodes = [
+        node("6s后进入直播间", 628, 2221, x1=388, x2=868),
+        node("肖", 1030, 2222, x1=1010, x2=1050),
+    ]
+    decision = decide(nodes, W, H, rules())
+    assert decision.action == "cancel"
+    assert decision.x == 1030  # 点到那个被读错的字上
+
+
+def test_cancel_falls_back_to_position_when_text_missing():
+    """连错字都没有时，仍要点胶囊右侧 —— 否则会被自动带进直播间卡死。"""
+    nodes = [node("6s后进入直播间", 628, 2221, x1=388, x2=868)]
+    decision = decide(nodes, W, H, rules())
+    assert decision.action == "cancel"
+    assert decision.x > 868  # 在胶囊右边
+    assert decision.y == 2221
+
+
+def test_cancel_fallback_ignores_far_away_text():
+    """同一行但太远的文字（比如商品文案）不该被当成取消。"""
+    nodes = [
+        node("6s后进入直播间", 628, 2221, x1=388, x2=868),
+        node("券后9.99", 1231, 3005, x1=1086, x2=1376),
+    ]
+    decision = decide(nodes, W, H, rules())
+    assert decision.action == "cancel"
+    assert 868 < decision.x < W * 0.9  # 位置兜底，不会跑去点右下角商品卡
+
+
 # ------------------------- 规则展开 -------------------------
 
 
 def test_rules_follow_priority_order():
     kinds = [rule.action for rule in rules()]
-    assert kinds == ["reward", "reward", "close", "close", "skip", "skip", "skip"]
+    assert kinds == ["reward", "reward", "reward", "close", "close", "skip", "skip", "skip"]
 
 
 def test_rules_carry_roi_and_center():

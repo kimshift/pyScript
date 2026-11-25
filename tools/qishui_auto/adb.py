@@ -177,6 +177,20 @@ class Adb:
     def tap(self, x: int, y: int) -> bool:
         return self.run(["shell", "input", "tap", str(int(x)), str(int(y))], timeout=10) is not None
 
+    def back(self) -> bool:
+        """KEYCODE_BACK：关弹窗 / 退出直播间（实测直播间按一次就回到广告页）。"""
+        return self.run(["shell", "input", "keyevent", "4"], timeout=10) is not None
+
+    # ---------- 前台窗口 ----------
+
+    def current_focus(self) -> str:
+        """当前焦点窗口（形如 com.luna.music/com.luna.biz.live...LivePlayerActivity）。
+
+        只 grep 关键两行，不整份 dump（整份 dumpsys window 有好几 MB，慢且没必要）。
+        """
+        out = self.run(["shell", "dumpsys window | grep -E 'mCurrentFocus|mFocusedApp'"], timeout=12)
+        return " ".join(line.strip() for line in (out or "").splitlines() if "mCurrent" in line or "mFocused" in line)
+
     # ---------- 音量 ----------
 
     def media_volume(self) -> int | None:

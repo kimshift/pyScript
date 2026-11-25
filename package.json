@@ -7,6 +7,7 @@
     "start": "node script/mise-menu.js",
     "menu": "node script/mise-menu.js",
     "setup": "mise run setup",
+    "qs":"mise run qs:run",
     "create_ld": "mise run ld:create",
     "serve_ld": "mise run ld:start",
     "create_txt": "mise run ld:create-txt",

@@ -28,7 +28,7 @@ class FakeAdb:
         self.exe = "fake-adb"
         self.serial = None
 
-    def ensure_device(self, serial=None):
+    def ensure_device(self, serial=None, prefer=None):
         self.serial = "fake-device"
         return "fake-device", ""
 

@@ -137,6 +137,7 @@ def _deep_merge(base: dict, override: dict) -> dict:
 class Settings:
     adb_path: str = ""
     serial: str = ""
+    saved_host: str = ""  # 上次记住的无线地址；只是「优先尝试」，失效自动回退
     use_ocr: bool = True
     uia_mode: str = "auto"
 

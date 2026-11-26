@@ -110,7 +110,7 @@ def test_network_serial_reports_when_reconnect_fails():
 def test_usb_serial_does_not_try_reconnect():
     """真机序列号掉了不该去 adb connect（那不是 IP，连不上还白等）。"""
     adb = FakeAdb("connected to x", pairs=[])
-    serial, err = adb.ensure_device(serial="343197069200106")
+    serial, _err = adb.ensure_device(serial="343197069200106")
     assert serial is None
     assert not any("connect" in c for c in adb.calls)
 
@@ -149,3 +149,45 @@ def test_after_pair_guides_when_all_ports_fail(monkeypatch, tmp_path, capsys):
     # 必须告诉用户「配对端口和连接端口不同」，这是最容易被误导的地方
     assert "配对端口" in out and "连接端口" in out
     assert "--host" in out
+
+
+# ------------------------- 记住的无线地址失效后回退 -------------------------
+
+
+def test_stale_wifi_host_falls_back_to_usb():
+    """无线调试关了、记住的地址失效时，插着 USB 必须还能跑。
+
+    真实场景：wifi_host=172.16.31.231:39697 已失效，同时有 USB 设备在线。
+    以前 apply_overrides 把它设成 serial（等于强制指定），直接报找不到设备。
+    """
+    adb = FakeAdb("cannot connect", pairs=[("6b14f005", "device")])
+    serial, err = adb.ensure_device(prefer="172.16.31.231:39697")
+    assert (serial, err) == ("6b14f005", "")
+
+
+def test_prefer_used_when_online():
+    adb = FakeAdb("", pairs=[("6b14f005", "device"), ("172.16.31.231:39697", "device")])
+    serial, _ = adb.ensure_device(prefer="172.16.31.231:39697")
+    assert serial == "172.16.31.231:39697"
+
+
+def test_prefer_ignored_when_explicit_serial_given():
+    """显式 --serial 仍然拥有最高优先级，找不到就报错不换设备。"""
+    adb = FakeAdb("", pairs=[("6b14f005", "device")])
+    serial, err = adb.ensure_device(serial="99999", prefer="6b14f005")
+    assert serial is None
+    assert "99999" in err
+
+
+def test_usb_preferred_over_network_when_multiple_online():
+    """多台在线时优先 USB：插着线通常就是此刻要用的那台。"""
+    adb = FakeAdb("", pairs=[("172.16.25.70:5555", "device"), ("6b14f005", "device")])
+    serial, err = adb.ensure_device()
+    assert (serial, err) == ("6b14f005", "")
+
+
+def test_two_usb_devices_still_ask():
+    adb = FakeAdb("", pairs=[("6b14f005", "device"), ("other123", "device")])
+    serial, err = adb.ensure_device()
+    assert serial is None
+    assert "--serial" in err

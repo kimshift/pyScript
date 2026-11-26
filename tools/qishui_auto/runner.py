@@ -75,10 +75,10 @@ def apply_overrides(settings: Settings, args: argparse.Namespace) -> Settings:
     if args.serial:
         settings.serial = args.serial
     elif args.action in ("run", "check") and not settings.serial:
-        # 配过无线调试就直接用记下的地址，省得每次带 --serial
-        wifi_host = str(_local_get(local_config_path(CONFIG_FILE), "wifi_host") or "").strip()
-        if wifi_host:
-            settings.serial = wifi_host
+        # 配过无线调试就优先用它（省得每次带 --serial）。
+        # 注意这只是「优先」：无线关了 / IP 变了要能自动退回 USB，不能硬指定，
+        # 否则用户拔了网线、关了无线就彻底跑不起来。
+        settings.saved_host = str(_local_get(local_config_path(CONFIG_FILE), "wifi_host") or "").strip()
     if args.adb_path:
         settings.adb_path = args.adb_path
     if args.dry_run:
@@ -137,7 +137,7 @@ class Runner:
     # ---------- 对外 ----------
 
     def run(self) -> int:
-        serial, err = self.adb.ensure_device()
+        serial, err = self.adb.ensure_device(prefer=self.s.saved_host)
         if not serial:
             log.error("%s", err)
             return EXIT_RUNTIME
@@ -552,7 +552,7 @@ def action_check(settings: Settings) -> int:
         return EXIT_RUNTIME
     print(f"[✓] adb：{adb.exe}（{adb.version()}）")
 
-    serial, err = adb.ensure_device()
+    serial, err = adb.ensure_device(prefer=settings.saved_host)
     if not serial:
         problems.append(err)
         print(f"[x] 设备：{err}")

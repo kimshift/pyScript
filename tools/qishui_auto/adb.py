@@ -21,6 +21,9 @@ import subprocess
 from pathlib import Path
 
 from kit.config import expand_path
+from kit.log import get_logger
+
+log = get_logger("qishui_auto")
 
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
@@ -129,8 +132,13 @@ class Adb:
                 pairs.append((parts[0], parts[1]))
         return pairs
 
-    def ensure_device(self, serial: str | None = None) -> tuple[str | None, str]:
-        """确定要操作的设备：返回 (serial, 错误说明)。单设备自动选，多设备必须指定。"""
+    def ensure_device(self, serial: str | None = None, prefer: str | None = None) -> tuple[str | None, str]:
+        """确定要操作的设备：返回 (serial, 错误说明)。
+
+        serial 是「明确指定」——找不到就报错，不会自作主张换设备。
+        prefer 是「优先尝试」——连不上就自动退回其它在线设备，用于记住的无线
+        地址：无线调试关了、IP 变了都不该让整个脚本跑不起来。
+        """
         pairs = self.devices()
         online = [s for s, state in pairs if state == "device"]
         want = serial or self.serial
@@ -149,9 +157,25 @@ class Adb:
                 return want, ""
             return None, f"未找到设备 {want}；当前在线：{online or '无'}"
 
+        # prefer：先试记住的地址（含自动重连），不行就用其它在线的
+        if prefer and prefer != serial:
+            state = next((st for s, st in pairs if s == prefer), None)
+            if state == "device" or (_is_network_serial(prefer) and self.connect(prefer)[0]):
+                self.serial = prefer
+                return prefer, ""
+            if online:
+                log.info("记住的设备 %s 不在线，改用在线设备", prefer)
+
         if not online:
             hint = "；当前列表：" + ", ".join(f"{s}({st})" for s, st in pairs) if pairs else ""
             return None, "没有在线设备：确认 USB 调试已开启、手机保持亮屏、`adb devices` 能看到设备" + hint
+
+        # 多台在线时优先挑 USB 直连的：插着线通常就是用户此刻想用的那台，
+        # 而网络设备（IP:端口）可能是上次留下的、手机早就不在了。
+        usb = [s for s in online if not _is_network_serial(s)]
+        if len(usb) == 1:
+            self.serial = usb[0]
+            return usb[0], ""
         if len(online) > 1:
             return None, f"检测到多台在线设备 {online}，请用 --serial 指定一台"
 
